@@ -30,6 +30,12 @@ CSS = """
 .state-run {background:#DCFCE7; color:#166534; padding:4px 8px; border-radius:10px; font-weight:700;}
 .state-ready {background:#FEF3C7; color:#92400E; padding:4px 8px; border-radius:10px; font-weight:700;}
 .state-wait {background:#DBEAFE; color:#1E40AF; padding:4px 8px; border-radius:10px; font-weight:700;}
+.slide-card {border:1px solid #CBD5E1; border-radius:24px; padding:28px 32px; background:white; margin:18px 0 14px 0; box-shadow:0 6px 24px rgba(15,23,42,.06);}
+.slide-kicker {font-size:.82rem; letter-spacing:.08em; text-transform:uppercase; color:#64748B; font-weight:700;}
+.slide-title {font-size:2rem; line-height:1.15; font-weight:800; margin:.35rem 0 1rem 0; color:#0F172A;}
+.slide-body {font-size:1.08rem; line-height:1.65; color:#334155;}
+.flow {font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#F8FAFC; border:1px dashed #94A3B8; padding:14px 18px; border-radius:14px; font-weight:700; text-align:center; margin:12px 0;}
+.demo-label {display:inline-block;background:#0F172A;color:#fff;padding:5px 10px;border-radius:999px;font-size:.78rem;font-weight:700;margin-bottom:6px;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -157,12 +163,226 @@ def render_gantt(rows):
     st.markdown(html, unsafe_allow_html=True)
 
 
+
+def lecture_slide(kicker, title, body_html, flow=None):
+    flow_html = f"<div class='flow'>{flow}</div>" if flow else ""
+    st.markdown(
+        f"""
+        <div class='slide-card'>
+          <div class='slide-kicker'>{kicker}</div>
+          <div class='slide-title'>{title}</div>
+          <div class='slide-body'>{body_html}</div>
+          {flow_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def render_process_demo(key_prefix="lecture"):
+    c1,c2,c3,c4 = st.columns(4)
+    with c1: p0_len = st.number_input("P0 instructions", 1, 20, 5, key=f"{key_prefix}_p0len")
+    with c2: p0_cpu = st.slider("P0 CPU probability", 0, 100, 100, key=f"{key_prefix}_p0cpu")
+    with c3: p1_len = st.number_input("P1 instructions", 1, 20, 5, key=f"{key_prefix}_p1len")
+    with c4: p1_cpu = st.slider("P1 CPU probability", 0, 100, 0, key=f"{key_prefix}_p1cpu")
+    switch = st.selectbox("Switch behavior", ["SWITCH_ON_IO", "SWITCH_ON_END"], key=f"{key_prefix}_switch")
+    cmd_args=["-l", f"{p0_len}:{p0_cpu},{p1_len}:{p1_cpu}", "-S", switch, "-c", "-p"]
+    with st.expander("Show the OSTEP command"):
+        st.code("python cpu-intro/process-run.py " + " ".join(cmd_args), language="bash")
+    if st.button("▶ Run process-state simulation", type="primary", key=f"{key_prefix}_run_process"):
+        ok,msg,out=run_ostep("cpu-intro", "process-run.py", cmd_args)
+        st.info(msg)
+        output_box(out)
+
+def render_scheduling_demo(key_prefix="lecture"):
+    jobs=[]
+    cols=st.columns(4)
+    defaults=[("P1",0,8),("P2",1,4),("P3",2,2),("P4",3,5)]
+    for idx,(n,a,b) in enumerate(defaults):
+        with cols[idx]:
+            st.markdown(f"**{n}**")
+            ar=st.number_input(f"{n} arrival",0,20,a,key=f"{key_prefix}_ar{n}")
+            bu=st.number_input(f"{n} burst",1,30,b,key=f"{key_prefix}_bu{n}")
+            jobs.append((n,ar,bu))
+    policy=st.radio("Policy", ["FCFS", "SJF", "Round Robin"], horizontal=True, key=f"{key_prefix}_policy")
+    quantum=st.slider("Time Quantum (Round Robin)",1,10,2,key=f"{key_prefix}_quantum")
+    if st.button("▶ Run scheduling simulation", type="primary", key=f"{key_prefix}_run_sched"):
+        if policy=="FCFS": rows,metrics=gantt_fcfs(jobs)
+        elif policy=="SJF": rows,metrics=gantt_sjf(jobs)
+        else: rows,metrics=gantt_rr(jobs, quantum)
+        render_gantt(rows)
+        st.dataframe(metrics, use_container_width=True)
+        c1,c2=st.columns(2)
+        c1.metric("Average waiting time", round(metrics["Waiting"].mean(),2))
+        c2.metric("Average turnaround time", round(metrics["Turnaround"].mean(),2))
+
+def render_thread_demo(key_prefix="lecture"):
+    initial=st.number_input("Shared counter initial value", 0, 100, 5, key=f"{key_prefix}_counter")
+    mode=st.radio("Execution pattern", ["Safe execution", "Interleaved race"], horizontal=True, key=f"{key_prefix}_mode")
+    if mode=="Safe execution":
+        rows=[("T1","LOAD",initial), ("T1","ADD",initial+1), ("T1","STORE",initial+1),
+              ("T2","LOAD",initial+1), ("T2","ADD",initial+2), ("T2","STORE",initial+2)]
+        final=initial+2; expected=initial+2
+    else:
+        rows=[("T1","LOAD",initial), ("T2","LOAD",initial), ("T1","ADD",initial+1),
+              ("T2","ADD",initial+1), ("T1","STORE",initial+1), ("T2","STORE",initial+1)]
+        final=initial+1; expected=initial+2
+    st.table(pd.DataFrame(rows, columns=["Thread","Step","Value seen/written"]))
+    c1,c2=st.columns(2)
+    c1.metric("Expected final value", expected)
+    c2.metric("Actual final value", final)
+    if final==expected:
+        st.success("No update was lost.")
+        st.caption("T1 finishes its read-modify-write sequence before T2 reads the shared value.")
+    else:
+        st.error("Lost update: both threads used the same old value. This is a data race.")
+        st.caption("Both threads read the same old value before either STORE completes, so one increment is overwritten.")
+    with st.expander("Run the real OSTEP x86.py backend"):
+        interval=st.slider("Interrupt interval (-i)",1,10,1,key=f"{key_prefix}_interval")
+        cmd_args=["-p","simple-race.s","-t","2","-i",str(interval),"-M","2000","-c"]
+        st.code("python threads-intro/x86.py " + " ".join(cmd_args), language="bash")
+        if st.button("▶ Run OSTEP thread simulation", key=f"{key_prefix}_run_thread"):
+            ok,msg,out=run_ostep("threads-intro", "x86.py", cmd_args)
+            st.info(msg)
+            output_box(out)
+
+
 def main():
     st.title("🧠 OS Exercise Lab")
     st.caption("A no-code teaching interface for OSTEP-style operating-system simulations")
-    tabs = st.tabs(["Overview", "1 Process States", "2 CPU Scheduling", "3 Threads & Data Race", "Instructor Notes"])
+    tabs = st.tabs(["🎓 Lecture Mode", "Overview", "1 Process States", "2 CPU Scheduling", "3 Threads & Data Race", "Instructor Notes"])
+
 
     with tabs[0]:
+        st.header("🎓 Lecture Mode — Slides + Live OSTEP Demos")
+        st.caption("Use this tab during class. Scroll from concept → prediction → live simulation → explanation.")
+
+        lecture_slide(
+            "Slide 1 · Why OSTEP?",
+            "Operating Systems are easier to learn when behavior is visible",
+            """
+            <b>OSTEP</b> provides small simulation programs for operating-system concepts.
+            We use them as a <b>simulation engine</b>, while this web app provides a classroom-friendly interface.
+            <br><br>
+            The goal is not to develop an OS kernel. The goal is to <b>observe OS behavior</b> and connect it to the lecture.
+            """,
+            "Theory → Prediction → Simulation → Evidence → Explanation"
+        )
+
+        lecture_slide(
+            "Slide 2 · Architecture",
+            "What is running behind this website?",
+            """
+            The web page does not replace OSTEP. It calls the original Python simulators in the backend.
+            <br><br>
+            <b>Frontend:</b> Streamlit teaching interface<br>
+            <b>Backend:</b> OSTEP Python simulation scripts<br>
+            <b>Student task:</b> observe, compare, explain
+            """,
+            "Browser → Streamlit → OSTEP Python scripts → Simulation output"
+        )
+
+        lecture_slide(
+            "Slide 3 · Repository Map",
+            "Which OSTEP components are we using?",
+            """
+            <b>cpu-intro</b> → process states and CPU/I/O behavior<br>
+            <b>cpu-sched</b> → scheduling policies<br>
+            <b>threads-intro</b> → threads, interleaving and shared-memory races
+            <br><br>
+            Later in the semester, the repository also contains virtual-memory and file-system exercises.
+            """
+        )
+
+        st.divider()
+        lecture_slide(
+            "Slide 4 · Scenario 1",
+            "A process does not continuously own the CPU",
+            """
+            A process can be <b>RUNNING</b>, <b>READY</b>, or <b>WAITING</b>.
+            When a process requests I/O, it may become WAITING. The CPU can then execute another READY process.
+            <br><br>
+            <b>Prediction:</b> What should happen when an I/O-bound process starts waiting?
+            """,
+            "RUNNING → I/O request → WAITING   |   another READY process → RUNNING"
+        )
+        st.markdown("<span class='demo-label'>LIVE DEMO 1</span>", unsafe_allow_html=True)
+        render_process_demo("lecture_process")
+        st.info("Explain: waiting for I/O does not mean the whole CPU must wait.")
+
+        st.divider()
+        lecture_slide(
+            "Slide 5 · Scenario 2",
+            "Same jobs. Same CPU. Different scheduler.",
+            """
+            The scheduler decides <b>which runnable process/thread gets CPU time next</b>.
+            Changing the scheduling policy can change waiting, turnaround and response times even when the workload is identical.
+            <br><br>
+            Compare <b>FCFS</b>, <b>SJF</b> and <b>Round Robin</b>.
+            <br><br>
+            <b>Prediction:</b> If the jobs do not change, why can waiting time change?
+            """,
+            "Same workload + Different policy → Different execution order → Different metrics"
+        )
+        st.markdown("<span class='demo-label'>LIVE DEMO 2</span>", unsafe_allow_html=True)
+        render_scheduling_demo("lecture_sched")
+        st.info("Explain: the workload did not change; only the scheduling decision changed.")
+
+        st.divider()
+        lecture_slide(
+            "Slide 6 · One Process, Multiple Threads",
+            "Threads share a process, but have separate execution states",
+            """
+            Threads in the same process share code, heap and global data.
+            Each thread still has its own stack, registers and execution state.
+            <br><br>
+            Shared memory makes communication fast — but it also creates synchronization risks.
+            """,
+            "Process → Thread 1 + Thread 2 + ... → shared heap/global data"
+        )
+
+        lecture_slide(
+            "Slide 7 · Why counter++ is dangerous",
+            "One line of code may be several machine-level steps",
+            """
+            An increment such as <b>counter++</b> is conceptually:
+            <b>LOAD → ADD → STORE</b>.
+            A context switch can occur between those steps.
+            <br><br>
+            If two threads read the same old value before either STORE completes, one update can be lost.
+            """,
+            "LOAD → ADD → STORE + interleaving → possible lost update"
+        )
+
+        lecture_slide(
+            "Slide 8 · Scenario 3",
+            "Two threads + one shared variable = possible data race",
+            """
+            Multithreading itself is not the problem.
+            The problem is <b>unsynchronized access to shared state</b>.
+            <br><br>
+            <b>Prediction:</b> Starting from counter = 5, if both threads increment once, should the final value be 6 or 7?
+            """
+        )
+        st.markdown("<span class='demo-label'>LIVE DEMO 3</span>", unsafe_allow_html=True)
+        render_thread_demo("lecture_thread")
+        st.info("Explain: expected 7, but an unsafe interleaving can produce 6 — a lost update/data race.")
+
+        st.divider()
+        lecture_slide(
+            "Slide 9 · Final Mental Model",
+            "Connect the whole story",
+            """
+            <b>Programs</b> become processes when executed.<br>
+            A <b>process</b> contains one or more threads.<br>
+            The <b>scheduler</b> decides which runnable thread gets CPU time.<br>
+            Threads in the same process can <b>share memory</b>.<br>
+            Shared state may require <b>synchronization</b>.
+            """,
+            "PROGRAM → PROCESS → THREAD(S) → SCHEDULER → CPU CORE(S)"
+        )
+        st.success("End-of-demo question: Which result today was caused by waiting, which by scheduling, and which by shared memory?")
+
+    with tabs[1]:
         st.header("Why this lab? Cut through abstraction.")
         st.markdown("""
         This local web interface turns operating-system concepts into observable scenarios.
@@ -181,7 +401,7 @@ def main():
         <div class='big-card'><b>Teaching pattern:</b> Predict → Run → Observe → Explain</div>
         """, unsafe_allow_html=True)
 
-    with tabs[1]:
+    with tabs[2]:
         st.header("Scenario 1 — CPU-bound vs I/O-bound processes")
         st.markdown("**Goal:** show that processes move between `RUNNING`, `READY`, and `WAITING`.")
         c1,c2,c3,c4 = st.columns(4)
@@ -200,7 +420,7 @@ def main():
         **Ask students:** When one process is waiting for I/O, what can the CPU do?
         """)
 
-    with tabs[2]:
+    with tabs[3]:
         st.header("Scenario 2 — Same jobs, different scheduler")
         st.markdown("**Goal:** show that changing only the scheduling policy changes waiting and turnaround times.")
         st.write("Default workload:")
@@ -227,7 +447,7 @@ def main():
             st.caption("The visualizer computes the classroom Gantt chart directly. OSTEP scheduler.py can be used in parallel for command-line verification.")
         st.markdown("**Ask students:** Did the jobs change, or did only the policy change?")
 
-    with tabs[3]:
+    with tabs[4]:
         st.header("Scenario 3 — Two threads, one shared variable")
         st.markdown("**Goal:** show how interleaving creates a lost update.")
         initial=st.number_input("Shared counter initial value", 0, 100, 5)
@@ -259,7 +479,7 @@ def main():
             st.info(msg)
             output_box(out)
 
-    with tabs[4]:
+    with tabs[5]:
         st.header("Suggested classroom script")
         st.markdown("""
         1. **Predict:** Ask what students expect before each run.  
