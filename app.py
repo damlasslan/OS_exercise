@@ -1,6 +1,7 @@
 import os
 import sys
 import zipfile
+import shutil
 import subprocess
 import tempfile
 import urllib.request
@@ -11,7 +12,9 @@ import streamlit as st
 
 OSTEP_URL = "https://github.com/remzi-arpacidusseau/ostep-homework/archive/refs/heads/master.zip"
 BASE_DIR = Path(__file__).parent
-OSTEP_DIR = BASE_DIR / "ostep-homework"
+# Store the downloaded OSTEP backend in /tmp on Streamlit Cloud.
+# This avoids cross-device move errors with Streamlit's mounted source tree.
+OSTEP_DIR = Path(tempfile.gettempdir()) / "ostep-homework"
 
 st.set_page_config(page_title="OS Exercise Lab", page_icon="🧠", layout="wide")
 
@@ -37,17 +40,31 @@ def ensure_ostep():
     marker = OSTEP_DIR / "cpu-intro" / "process-run.py"
     if marker.exists():
         return True, "OSTEP repository is available locally."
+
     try:
+        # Clean up any incomplete prior download.
+        if OSTEP_DIR.exists():
+            shutil.rmtree(OSTEP_DIR, ignore_errors=True)
+
         with tempfile.TemporaryDirectory() as td:
-            zip_path = Path(td) / "ostep.zip"
+            td_path = Path(td)
+            zip_path = td_path / "ostep.zip"
             urllib.request.urlretrieve(OSTEP_URL, zip_path)
+
             with zipfile.ZipFile(zip_path, "r") as z:
-                z.extractall(td)
-            extracted = Path(td) / "ostep-homework-master"
-            if OSTEP_DIR.exists():
-                pass
-            else:
-                extracted.rename(OSTEP_DIR)
+                z.extractall(td_path)
+
+            extracted = td_path / "ostep-homework-master"
+            if not extracted.exists():
+                return False, "OSTEP archive was downloaded, but its extracted folder was not found."
+
+            # copytree works safely even when source and destination are on
+            # different filesystems/mounts.
+            shutil.copytree(extracted, OSTEP_DIR)
+
+        if not marker.exists():
+            return False, "OSTEP repository was copied, but process-run.py is missing."
+
         return True, "OSTEP repository downloaded successfully."
     except Exception as e:
         return False, f"Could not download OSTEP repository: {e}"
@@ -197,7 +214,7 @@ def main():
                 bu=st.number_input(f"{n} burst",1,30,b,key=f"bu{n}")
                 jobs.append((n,ar,bu))
         policy=st.radio("Policy", ["FCFS", "SJF", "Round Robin"], horizontal=True)
-        quantum=st.slider("RR quantum",1,10,2)
+        quantum=st.slider("Time Quantum (Round Robin)",1,10,2)
         if st.button("Run scheduling simulation", type="primary"):
             if policy=="FCFS": rows,metrics=gantt_fcfs(jobs)
             elif policy=="SJF": rows,metrics=gantt_sjf(jobs)
@@ -227,8 +244,10 @@ def main():
         c2.metric("Actual final value", final)
         if final==expected:
             st.success("No update was lost.")
+            st.caption("T1 completes its read-modify-write sequence before T2 reads the shared value.")
         else:
             st.error("Lost update: both threads used the same old value. This is a data race.")
+            st.caption("Both threads read the same old value before either STORE completes, so one increment is overwritten.")
         st.divider()
         st.subheader("Run OSTEP x86.py backend")
         st.caption("This executes the OSTEP threads-intro/simple-race.s example in the backend.")
