@@ -36,6 +36,7 @@ CSS = """
 .slide-body {font-size:1.08rem; line-height:1.65; color:#334155;}
 .flow {font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#F8FAFC; border:1px dashed #94A3B8; padding:14px 18px; border-radius:14px; font-weight:700; text-align:center; margin:12px 0;}
 .demo-label {display:inline-block;background:#0F172A;color:#fff;padding:5px 10px;border-radius:999px;font-size:.78rem;font-weight:700;margin-bottom:6px;}
+.nav-caption {text-align:center;color:#64748B;font-size:.9rem;margin-top:.35rem;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -252,135 +253,176 @@ def main():
     tabs = st.tabs(["🎓 Lecture Mode", "Overview", "1 Process States", "2 CPU Scheduling", "3 Threads & Data Race", "Instructor Notes"])
 
 
+
     with tabs[0]:
-        st.header("🎓 Lecture Mode — Slides + Live OSTEP Demos")
-        st.caption("Use this tab during class. Scroll from concept → prediction → live simulation → explanation.")
+        st.header("🎓 Lecture Mode")
+        st.caption("Present one concept at a time. Use Previous / Next to move through the lesson.")
+
+        slides = [
+            {
+                "kicker": "Slide 1 · Why OSTEP?",
+                "title": "Operating Systems are easier to learn when behavior is visible",
+                "body": """
+                <b>OSTEP</b> provides small simulation programs for operating-system concepts.
+                We use them as a <b>simulation engine</b>, while this web app provides a classroom-friendly interface.
+                <br><br>
+                The goal is not to develop an OS kernel. The goal is to <b>observe OS behavior</b> and connect it to the lecture.
+                """,
+                "flow": "Theory → Prediction → Simulation → Evidence → Explanation",
+                "demo": None,
+            },
+            {
+                "kicker": "Slide 2 · Architecture",
+                "title": "What is running behind this website?",
+                "body": """
+                The web page does not replace OSTEP. It calls the original Python simulators in the backend.
+                <br><br>
+                <b>Frontend:</b> Streamlit teaching interface<br>
+                <b>Backend:</b> OSTEP Python simulation scripts<br>
+                <b>Student task:</b> observe, compare, explain
+                """,
+                "flow": "Browser → Streamlit → OSTEP Python scripts → Simulation output",
+                "demo": None,
+            },
+            {
+                "kicker": "Slide 3 · Repository Map",
+                "title": "Which OSTEP components are we using?",
+                "body": """
+                <b>cpu-intro</b> → process states and CPU/I/O behavior<br>
+                <b>cpu-sched</b> → scheduling policies<br>
+                <b>threads-intro</b> → threads, interleaving and shared-memory races
+                <br><br>
+                Later in the semester, the repository also contains virtual-memory and file-system exercises.
+                """,
+                "flow": None,
+                "demo": None,
+            },
+            {
+                "kicker": "Slide 4 · Scenario 1",
+                "title": "A process does not continuously own the CPU",
+                "body": """
+                A process can be <b>RUNNING</b>, <b>READY</b>, or <b>WAITING</b>.
+                When a process requests I/O, it may become WAITING. The CPU can then execute another READY process.
+                <br><br>
+                <b>Prediction:</b> What should happen when an I/O-bound process starts waiting?
+                """,
+                "flow": "RUNNING → I/O request → WAITING   |   another READY process → RUNNING",
+                "demo": "process",
+            },
+            {
+                "kicker": "Slide 5 · Scenario 2",
+                "title": "Same jobs. Same CPU. Different scheduler.",
+                "body": """
+                The scheduler decides <b>which runnable process/thread gets CPU time next</b>.
+                Changing the scheduling policy can change waiting, turnaround and response times even when the workload is identical.
+                <br><br>
+                Compare <b>FCFS</b>, <b>SJF</b> and <b>Round Robin</b>.
+                <br><br>
+                <b>Prediction:</b> If the jobs do not change, why can waiting time change?
+                """,
+                "flow": "Same workload + Different policy → Different execution order → Different metrics",
+                "demo": "schedule",
+            },
+            {
+                "kicker": "Slide 6 · One Process, Multiple Threads",
+                "title": "Threads share a process, but have separate execution states",
+                "body": """
+                Threads in the same process share code, heap and global data.
+                Each thread still has its own stack, registers and execution state.
+                <br><br>
+                Shared memory makes communication fast — but it also creates synchronization risks.
+                """,
+                "flow": "Process → Thread 1 + Thread 2 + ... → shared heap/global data",
+                "demo": None,
+            },
+            {
+                "kicker": "Slide 7 · Why counter++ is dangerous",
+                "title": "One line of code may be several machine-level steps",
+                "body": """
+                An increment such as <b>counter++</b> is conceptually:
+                <b>LOAD → ADD → STORE</b>.
+                A context switch can occur between those steps.
+                <br><br>
+                If two threads read the same old value before either STORE completes, one update can be lost.
+                """,
+                "flow": "LOAD → ADD → STORE + interleaving → possible lost update",
+                "demo": None,
+            },
+            {
+                "kicker": "Slide 8 · Scenario 3",
+                "title": "Two threads + one shared variable = possible data race",
+                "body": """
+                Multithreading itself is not the problem.
+                The problem is <b>unsynchronized access to shared state</b>.
+                <br><br>
+                <b>Prediction:</b> Starting from counter = 5, if both threads increment once, should the final value be 6 or 7?
+                """,
+                "flow": None,
+                "demo": "thread",
+            },
+            {
+                "kicker": "Slide 9 · Final Mental Model",
+                "title": "Connect the whole story",
+                "body": """
+                <b>Programs</b> become processes when executed.<br>
+                A <b>process</b> contains one or more threads.<br>
+                The <b>scheduler</b> decides which runnable thread gets CPU time.<br>
+                Threads in the same process can <b>share memory</b>.<br>
+                Shared state may require <b>synchronization</b>.
+                """,
+                "flow": "PROGRAM → PROCESS → THREAD(S) → SCHEDULER → CPU CORE(S)",
+                "demo": "final",
+            },
+        ]
+
+        if "lecture_slide_idx" not in st.session_state:
+            st.session_state.lecture_slide_idx = 0
+
+        idx = st.session_state.lecture_slide_idx
+        current = slides[idx]
 
         lecture_slide(
-            "Slide 1 · Why OSTEP?",
-            "Operating Systems are easier to learn when behavior is visible",
-            """
-            <b>OSTEP</b> provides small simulation programs for operating-system concepts.
-            We use them as a <b>simulation engine</b>, while this web app provides a classroom-friendly interface.
-            <br><br>
-            The goal is not to develop an OS kernel. The goal is to <b>observe OS behavior</b> and connect it to the lecture.
-            """,
-            "Theory → Prediction → Simulation → Evidence → Explanation"
+            current["kicker"],
+            current["title"],
+            current["body"],
+            current["flow"],
         )
 
-        lecture_slide(
-            "Slide 2 · Architecture",
-            "What is running behind this website?",
-            """
-            The web page does not replace OSTEP. It calls the original Python simulators in the backend.
-            <br><br>
-            <b>Frontend:</b> Streamlit teaching interface<br>
-            <b>Backend:</b> OSTEP Python simulation scripts<br>
-            <b>Student task:</b> observe, compare, explain
-            """,
-            "Browser → Streamlit → OSTEP Python scripts → Simulation output"
-        )
-
-        lecture_slide(
-            "Slide 3 · Repository Map",
-            "Which OSTEP components are we using?",
-            """
-            <b>cpu-intro</b> → process states and CPU/I/O behavior<br>
-            <b>cpu-sched</b> → scheduling policies<br>
-            <b>threads-intro</b> → threads, interleaving and shared-memory races
-            <br><br>
-            Later in the semester, the repository also contains virtual-memory and file-system exercises.
-            """
-        )
+        if current["demo"] == "process":
+            st.markdown("<span class='demo-label'>LIVE DEMO 1</span>", unsafe_allow_html=True)
+            render_process_demo("lecture_process")
+            st.info("Explain: waiting for I/O does not mean the whole CPU must wait.")
+        elif current["demo"] == "schedule":
+            st.markdown("<span class='demo-label'>LIVE DEMO 2</span>", unsafe_allow_html=True)
+            render_scheduling_demo("lecture_sched")
+            st.info("Explain: the workload did not change; only the scheduling decision changed.")
+        elif current["demo"] == "thread":
+            st.markdown("<span class='demo-label'>LIVE DEMO 3</span>", unsafe_allow_html=True)
+            render_thread_demo("lecture_thread")
+            st.info("Explain: expected 7, but an unsafe interleaving can produce 6 — a lost update/data race.")
+        elif current["demo"] == "final":
+            st.success("End-of-demo question: Which result today was caused by waiting, which by scheduling, and which by shared memory?")
 
         st.divider()
-        lecture_slide(
-            "Slide 4 · Scenario 1",
-            "A process does not continuously own the CPU",
-            """
-            A process can be <b>RUNNING</b>, <b>READY</b>, or <b>WAITING</b>.
-            When a process requests I/O, it may become WAITING. The CPU can then execute another READY process.
-            <br><br>
-            <b>Prediction:</b> What should happen when an I/O-bound process starts waiting?
-            """,
-            "RUNNING → I/O request → WAITING   |   another READY process → RUNNING"
-        )
-        st.markdown("<span class='demo-label'>LIVE DEMO 1</span>", unsafe_allow_html=True)
-        render_process_demo("lecture_process")
-        st.info("Explain: waiting for I/O does not mean the whole CPU must wait.")
+        left, mid, right = st.columns([1, 2, 1])
 
-        st.divider()
-        lecture_slide(
-            "Slide 5 · Scenario 2",
-            "Same jobs. Same CPU. Different scheduler.",
-            """
-            The scheduler decides <b>which runnable process/thread gets CPU time next</b>.
-            Changing the scheduling policy can change waiting, turnaround and response times even when the workload is identical.
-            <br><br>
-            Compare <b>FCFS</b>, <b>SJF</b> and <b>Round Robin</b>.
-            <br><br>
-            <b>Prediction:</b> If the jobs do not change, why can waiting time change?
-            """,
-            "Same workload + Different policy → Different execution order → Different metrics"
-        )
-        st.markdown("<span class='demo-label'>LIVE DEMO 2</span>", unsafe_allow_html=True)
-        render_scheduling_demo("lecture_sched")
-        st.info("Explain: the workload did not change; only the scheduling decision changed.")
+        with left:
+            prev_disabled = idx == 0
+            if st.button("← Previous", use_container_width=True, disabled=prev_disabled, key="lecture_prev"):
+                st.session_state.lecture_slide_idx -= 1
+                st.rerun()
 
-        st.divider()
-        lecture_slide(
-            "Slide 6 · One Process, Multiple Threads",
-            "Threads share a process, but have separate execution states",
-            """
-            Threads in the same process share code, heap and global data.
-            Each thread still has its own stack, registers and execution state.
-            <br><br>
-            Shared memory makes communication fast — but it also creates synchronization risks.
-            """,
-            "Process → Thread 1 + Thread 2 + ... → shared heap/global data"
-        )
+        with mid:
+            st.markdown(
+                f"<div class='nav-caption'>Slide {idx + 1} of {len(slides)}</div>",
+                unsafe_allow_html=True,
+            )
 
-        lecture_slide(
-            "Slide 7 · Why counter++ is dangerous",
-            "One line of code may be several machine-level steps",
-            """
-            An increment such as <b>counter++</b> is conceptually:
-            <b>LOAD → ADD → STORE</b>.
-            A context switch can occur between those steps.
-            <br><br>
-            If two threads read the same old value before either STORE completes, one update can be lost.
-            """,
-            "LOAD → ADD → STORE + interleaving → possible lost update"
-        )
-
-        lecture_slide(
-            "Slide 8 · Scenario 3",
-            "Two threads + one shared variable = possible data race",
-            """
-            Multithreading itself is not the problem.
-            The problem is <b>unsynchronized access to shared state</b>.
-            <br><br>
-            <b>Prediction:</b> Starting from counter = 5, if both threads increment once, should the final value be 6 or 7?
-            """
-        )
-        st.markdown("<span class='demo-label'>LIVE DEMO 3</span>", unsafe_allow_html=True)
-        render_thread_demo("lecture_thread")
-        st.info("Explain: expected 7, but an unsafe interleaving can produce 6 — a lost update/data race.")
-
-        st.divider()
-        lecture_slide(
-            "Slide 9 · Final Mental Model",
-            "Connect the whole story",
-            """
-            <b>Programs</b> become processes when executed.<br>
-            A <b>process</b> contains one or more threads.<br>
-            The <b>scheduler</b> decides which runnable thread gets CPU time.<br>
-            Threads in the same process can <b>share memory</b>.<br>
-            Shared state may require <b>synchronization</b>.
-            """,
-            "PROGRAM → PROCESS → THREAD(S) → SCHEDULER → CPU CORE(S)"
-        )
-        st.success("End-of-demo question: Which result today was caused by waiting, which by scheduling, and which by shared memory?")
+        with right:
+            next_disabled = idx == len(slides) - 1
+            if st.button("Next →", use_container_width=True, disabled=next_disabled, key="lecture_next"):
+                st.session_state.lecture_slide_idx += 1
+                st.rerun()
 
     with tabs[1]:
         st.header("Why this lab? Cut through abstraction.")
