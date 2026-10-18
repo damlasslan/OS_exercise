@@ -10,16 +10,18 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 
 | Time | PPT | LM | Content |
 | --- | --- | --- | --- |
-| 00–45 | 1–25 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling (optional: PPT 119–120 measure it yourself) |
-| 45–70 | 26–42 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) |
-| 70–100 | 43–64 | 14 + Real-World | Four real systems (synchronization + scheduling), preemption; Round Robin is first named on LM 14 |
+| 00–45 | 1–28 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling: roles and snapshot, I/O-bound ≠ CPU-free, activities that do not execute as CPU threads, application vs OS vs hardware (optional: PPT 122–123 measure it yourself) |
+| 45–70 | 29–45 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) |
+| 70–100 | 46–67 | 14 + Real-World | Four real systems (synchronization + scheduling), preemption; Round Robin is first named on LM 14 |
 | 100–110 | — | — | Break |
-| 110–160 | 65–103 | 15–20 | FCFS, SJF, SRTF, Demo 3, Demo 4 (Round Robin quantum), Priority, MLFQ, metrics, practice |
-| 160–180 | 104–118 | 21–22 | Multicore, bank example, wrap-up |
+| 110–160 | 68–106 | 15–20 | FCFS, SJF, SRTF, Demo 3, Demo 4 (Round Robin quantum), Priority, MLFQ, metrics, practice |
+| 160–180 | 107–121 | 21–22 | Multicore, bank example, wrap-up |
 
 ## Key messages
 
 - A blocked thread uses no CPU; the OS runs another READY thread (Demo 1, thread demo).
+- I/O-bound ≠ CPU-free: a file reader runs CPU instructions to request I/O and to process the data; it is CPU-free only while the device works. Disk, DMA and NIC activity have no thread states.
+- A woken thread becomes READY first; when it runs depends on the ready-queue order and the scheduler, not only the quantum.
 - main (T0) is the process's first thread: like a parent it creates T1 and T2 and waits in `pthread_join` (cf. `fork()`/`wait()` in Week 3).
 - `counter++` is LOAD → ADD → STORE; unsynchronized shared state loses updates even on one core (Demo 2).
 - Same jobs, different policy, different waiting time (Demos 3–4).

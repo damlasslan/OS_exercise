@@ -2,7 +2,7 @@
  {
   "code": "V01",
   "title": "Process states",
-  "slides": "10, 18-21, 36-37",
+  "slides": "10, 18-21, 39-40",
   "board": 1,
   "boards": 3,
   "img": "V01_1.jpg",
@@ -26,7 +26,7 @@
  {
   "code": "V01",
   "title": "Process states",
-  "slides": "10, 18-21, 36-37",
+  "slides": "10, 18-21, 39-40",
   "board": 2,
   "boards": 3,
   "img": "V01_2.jpg",
@@ -44,7 +44,7 @@
  {
   "code": "V01",
   "title": "Process states",
-  "slides": "10, 18-21, 36-37",
+  "slides": "10, 18-21, 39-40",
   "board": 3,
   "boards": 3,
   "img": "V01_3.jpg",
@@ -66,7 +66,7 @@
  {
   "code": "V02",
   "title": "Concurrency vs parallelism",
-  "slides": "4, 27-33",
+  "slides": "4, 30-36",
   "board": 1,
   "boards": 1,
   "img": "V02_1.jpg",
@@ -88,7 +88,7 @@
  {
   "code": "V03",
   "title": "Lost update: two threads, one balance",
-  "slides": "3, 38-42",
+  "slides": "3, 41-45",
   "board": 1,
   "boards": 2,
   "img": "V03_1.jpg",
@@ -112,7 +112,7 @@
  {
   "code": "V03",
   "title": "Lost update: two threads, one balance",
-  "slides": "3, 38-42",
+  "slides": "3, 41-45",
   "board": 2,
   "boards": 2,
   "img": "V03_2.jpg",
@@ -130,7 +130,7 @@
  {
   "code": "V04",
   "title": "Same two jobs, three policies",
-  "slides": "55-60",
+  "slides": "58-63",
   "board": 1,
   "boards": 1,
   "img": "V04_1.jpg",
@@ -154,7 +154,7 @@
  {
   "code": "V05",
   "title": "FCFS vs SJF  (8 / 4 / 2)",
-  "slides": "71-77",
+  "slides": "74-80",
   "board": 1,
   "boards": 1,
   "img": "V05_1.jpg",
@@ -176,7 +176,7 @@
  {
   "code": "V06",
   "title": "SRTF step by step",
-  "slides": "79, 83",
+  "slides": "82, 86",
   "board": 1,
   "boards": 1,
   "img": "V06_1.jpg",
@@ -204,7 +204,7 @@
  {
   "code": "V07",
   "title": "Round Robin q = 2: the ready queue",
-  "slides": "84-85",
+  "slides": "87-88",
   "board": 1,
   "boards": 1,
   "img": "V07_1.jpg",
@@ -232,7 +232,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "65-68, 80-82",
+  "slides": "68-71, 83-85",
   "board": 1,
   "boards": 2,
   "img": "V08_1.jpg",
@@ -254,7 +254,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "65-68, 80-82",
+  "slides": "68-71, 83-85",
   "board": 2,
   "boards": 2,
   "img": "V08_2.jpg",
@@ -270,7 +270,7 @@
  {
   "code": "V09",
   "title": "Priority scheduling and starvation",
-  "slides": "88-90",
+  "slides": "91-93",
   "board": 1,
   "boards": 1,
   "img": "V09_1.jpg",
@@ -292,7 +292,7 @@
  {
   "code": "V10",
   "title": "MLFQ: a mini story",
-  "slides": "91-95",
+  "slides": "94-98",
   "board": 1,
   "boards": 1,
   "img": "V10_1.jpg",
@@ -318,7 +318,7 @@
  {
   "code": "V11",
   "title": "One task, three clocks",
-  "slides": "96-97",
+  "slides": "99-100",
   "board": 1,
   "boards": 1,
   "img": "V11_1.jpg",
@@ -340,7 +340,7 @@
  {
   "code": "V12",
   "title": "Practice solution  (6 / 2 / 4)",
-  "slides": "98-99",
+  "slides": "101-102",
   "board": 1,
   "boards": 1,
   "img": "V12_1.jpg",
@@ -360,7 +360,7 @@
  {
   "code": "V13",
   "title": "Multicore: balance vs locality",
-  "slides": "104-111",
+  "slides": "107-114",
   "board": 1,
   "boards": 1,
   "img": "V13_1.jpg",
@@ -382,7 +382,7 @@
  {
   "code": "V14",
   "title": "Banking: two dimensions",
-  "slides": "45, RW 2-4",
+  "slides": "48, RW 2-4",
   "board": 1,
   "boards": 1,
   "img": "V14_1.jpg",
@@ -408,7 +408,7 @@
  {
   "code": "V15",
   "title": "Robotic surgery: two dimensions",
-  "slides": "46, RW 5-7",
+  "slides": "49, RW 5-7",
   "board": 1,
   "boards": 1,
   "img": "V15_1.jpg",
@@ -434,7 +434,7 @@
  {
   "code": "V16",
   "title": "Ticket reservation: two dimensions",
-  "slides": "47, RW 8-10",
+  "slides": "50, RW 8-10",
   "board": 1,
   "boards": 1,
   "img": "V16_1.jpg",
@@ -462,7 +462,7 @@
  {
   "code": "V17",
   "title": "Video streaming: two dimensions",
-  "slides": "48, RW 11-13",
+  "slides": "51, RW 11-13",
   "board": 1,
   "boards": 1,
   "img": "V17_1.jpg",
@@ -486,25 +486,29 @@
  {
   "code": "V18",
   "title": "Thread-level scheduling",
-  "slides": "22-25",
+  "slides": "22-28",
   "board": 1,
   "boards": 1,
   "img": "V18_1.jpg",
   "caps": [
    "Bir process, iki worker thread: T1 dosya okuyor, T2 hesap yapıyor. Main thread ikisini de bekliyor.",
    "main (T0) process'in ilk thread'i: bir ebeveyn gibi T1 ve T2'yi yaratıyor, sonra pthread_join'de çocuklarını bekliyor; Week 3'teki fork() ve wait() gibi.",
-   "OS çalıştırılabilir thread'leri zamanlar: T1 bloke iken çekirdek 0'da T2 çalışıyor.",
-   "Tek çekirdekte zaman çizelgesi: T1 3 tık bloke; bu sırada T2 çalışıyor.",
+   "Sağa bir anlık görüntü çizin, t = 4: çekirdek 0'da T2 çalışıyor; T1 I/O için, T0 join'de bloke. Çekirdek T2'ye kalıcı verilmiş değil.",
+   "Tek çekirdekte zaman çizelgesi: T1 3 tık bloke; bu sırada CPU'da T2 çalışıyor.",
    "T1 uyandığında doğrudan RUNNING olmuyor: önce READY, T2'nin dilimi bitince çalışıyor.",
+   "Dördüncü satır kavramsal ve bir thread değil: gerçek bir read() olsaydı T1 bloke iken işi cihaz yapardı. Demodaki sleep() diski çalıştırmaz; donanımın da READY, RUNNING, BLOCKED durumu yoktur.",
+   "READY nedenleri: tick 1'de T2 yeni, kuyrukta T1'in arkasında; tick 5'te T1 uyandı; tick 6'da T2'nin 4 tıklık dilimi doldu ve T1 hazırdı.",
    "Tahtaya iki cümleyi yazın: bir process tek bir yürütme akışı değildir; bir thread'in bloke olması bütün process'i durdurmaz.",
    "Son cümle: scheduler çalıştırılabilir thread'leri zamanlar; bloke bir thread aynı process'teki diğerlerini engellemez."
   ],
   "caps_en": [
    "One process, two worker threads: T1 reads a file, T2 computes. The main thread waits for both.",
    "main (T0) is the process's first thread: like a parent it creates T1 and T2, then waits for its children in pthread_join, like fork() and wait() in Week 3.",
-   "The OS schedules runnable threads: while T1 is blocked, T2 runs on core 0.",
-   "Timeline on one core: T1 is blocked for 3 ticks; meanwhile T2 runs.",
+   "On the right, draw a snapshot at t = 4: T2 runs on core 0; T1 is blocked on I/O and T0 in join. The core is not permanently given to T2.",
+   "Timeline on one core: T1 is blocked for 3 ticks; meanwhile T2 runs on the CPU.",
    "When T1 wakes it does not become RUNNING directly: first READY, then it runs when T2's slice ends.",
+   "The fourth row is conceptual and not a thread: with a real read(), the device would do the work while T1 is blocked. The demo's sleep() does not run the disk, and hardware has no READY, RUNNING or BLOCKED state.",
+   "Why READY: at tick 1 T2 is new, behind T1 in the queue; at tick 5 T1 woke up; at tick 6 T2's 4-tick slice ended and T1 was ready.",
    "Write two sentences on the board: one process is not one execution flow; one blocked thread does not block the entire process.",
    "Final sentence: the scheduler schedules runnable threads; a blocked thread does not prevent the others in the same process from running."
   ]

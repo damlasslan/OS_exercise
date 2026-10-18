@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import urllib.request
+import html as html_mod
 from pathlib import Path
 
 import pandas as pd
@@ -793,10 +794,10 @@ OSTEP_LINKS = {
 
 UI = {
     "tr": {"panel": "📝 Eğitmen · tahtaya çizilecekler ve anlatım", "say": "Söyleyin", "board": "Tahta",
-           "slides": "PPT v2 slayt", "steps": "Çizim ve anlatım sırası", "video": "tahta videosunu göster",
+           "slides": "PPT v3 slayt", "steps": "Çizim ve anlatım sırası", "video": "tahta videosunu göster",
            "qa": "Sorular ve cevaplar", "q": "S", "a": "C"},
     "en": {"panel": "📝 Instructor · board drawing and script", "say": "Say", "board": "Board",
-           "slides": "PPT v2 slides", "steps": "Drawing and narration steps", "video": "show the board video",
+           "slides": "PPT v3 slides", "steps": "Drawing and narration steps", "video": "show the board video",
            "qa": "Questions and answers", "q": "Q", "a": "A"},
 }
 
@@ -1208,45 +1209,203 @@ def thread_simulate(cores=1, sleep=3, work=6, quantum=4):
 
 STATE_COLORS = {"RUNNING": "#BBF7D0", "READY": "#FEF08A", "BLOCKED": "#BFDBFE", "BLOCKED (join)": "#E9D5FF",
                 "DONE": "#F1F5F9", "—": "#FFFFFF"}
+STATE_MEANING = [("RUNNING", "Executing CPU instructions", "Yes"),
+                 ("READY", "Runnable, waiting for a CPU", "No"),
+                 ("BLOCKED", "Waiting for sleep / I/O completion", "No"),
+                 ("BLOCKED (join)", "Main waiting for its worker threads", "No"),
+                 ("DONE", "Execution completed", "No")]
+QUANTUM = 4
+
+
+def _tname(n):
+    return "T0 (main)" if n == "main" else n
+
+
+def _segments(seq):
+    out, a = [], 0
+    for i in range(1, len(seq) + 1):
+        if i == len(seq) or seq[i] != seq[a]:
+            out.append((seq[a], a, i)); a = i
+    return out
+
+
+def thread_events(lanes, core_lanes, sleep, work):
+    """Explain every state change of the simulation: list of (start, end, thread, state, why)."""
+    total = len(lanes["main"])
+    on_core = lambda i: [x for cl in core_lanes for x in [cl[i]] if x != "idle"]
+    rows = []
+    for n in ("main", "T1", "T2"):
+        prev, run_seen, cpu_done = "—", 0, 0
+        for state, a, b in _segments(lanes[n]):
+            if state in ("—", "DONE"):
+                prev = state; continue
+            why = ""
+            if state == "RUNNING":
+                c = next(k for k, cl in enumerate(core_lanes) if cl[a] == n)
+                p = core_lanes[c][a - 1] if a > 0 else "idle"
+                if p == "idle":
+                    cause = f"core {c} was free"
+                else:
+                    ps = lanes[p][a]
+                    cause = {"BLOCKED": f"{_tname(p)} blocked, so core {c} became free",
+                             "BLOCKED (join)": f"{_tname(p)} started waiting in pthread_join(), so core {c} became free",
+                             "DONE": f"{_tname(p)} finished, so core {c} became free",
+                             "READY": f"{_tname(p)}'s {QUANTUM}-tick quantum ended; the scheduler picked {_tname(n)}"}.get(ps, f"core {c} was free")
+                if n == "main":
+                    why = "Main creates T1 and T2 (pthread_create)" if run_seen == 0 else "pthread_join() completed; main continues and exits"
+                elif n == "T1":
+                    why = ("Starts its blocking wait (printf, then sleep)" if run_seen == 0 else
+                           "Wait is over and it has the CPU: final printf, then T1 finishes")
+                else:
+                    left = work + 2 - cpu_done
+                    why = "Starts calculating" if run_seen == 0 else f"Continues its remaining CPU work ({left} ticks left)"
+                if prev == "BLOCKED" and n == "T1":
+                    why += f" — {cause}, so no READY wait"
+                else:
+                    why += f" — {cause}"
+                run_seen += 1; cpu_done += b - a
+            elif state == "READY":
+                busy = ", ".join(_tname(x) for x in on_core(a)) or "—"
+                if prev == "—":
+                    why = f"Created; waits in the ready queue because every core is busy ({busy})"
+                elif prev == "BLOCKED":
+                    why = f"Wait finished, but no core is free ({busy} on the CPU) — READY is not RUNNING"
+                elif prev == "RUNNING":
+                    why = f"Used its {QUANTUM}-tick quantum while another thread was READY → preempted"
+                elif prev == "BLOCKED (join)":
+                    why = f"T1 and T2 are done; main is runnable but waits for a core ({busy})"
+            elif state == "BLOCKED":
+                why = f"Blocking wait: sleep({sleep}) for {b - a} ticks — uses no CPU"
+            elif state == "BLOCKED (join)":
+                why = "Waits in pthread_join() until T1 and T2 finish — uses no CPU"
+            rows.append((a, b, _tname(n), state, why))
+            prev = state
+    rows.sort(key=lambda r: (r[0], r[2]))
+    return rows
+
+
+def _cpu_util(core_lanes):
+    total = len(core_lanes[0])
+    busy = sum(1 for cl in core_lanes for x in cl if x != "idle")
+    return busy / (len(core_lanes) * total) * 100
 
 
 def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
-        nc = st.radio("CPU cores", [1, 2], index=[1, 2].index(cores), horizontal=True, key=f"{key}_cores",
-                      help="1 core = like running with `taskset -c 0`: concurrency without parallelism.")
+        nc = st.radio("Number of CPU Cores", [1, 2], index=[1, 2].index(cores), horizontal=True, key=f"{key}_cores",
+                      help="1 core = like running with `taskset -c 0`.")
+        st.caption("1 = concurrency · 2 = possible parallelism")
     with c2:
-        sl = st.slider("T1 sleep / I/O wait (ticks)", 1, 10, sleep, key=f"{key}_sleep",
-                       help="sleep(3) in the code: T1 is BLOCKED and uses no CPU.")
+        sl = st.slider("T1 — Blocking Wait Duration", 1, 10, sleep, key=f"{key}_sleep",
+                       help="sleep() in the code: a simulated blocking wait.")
+        st.caption("T1 remains BLOCKED for the selected number of ticks")
     with c3:
-        wk = st.slider("T2 calculation loop (ticks)", 1, 10, work, key=f"{key}_work",
+        wk = st.slider("T2 — Calculation Workload", 1, 10, work, key=f"{key}_work",
                        help="The for-loop in calculator(): pure CPU work.")
-    st.caption(f"A tick is an abstract unit of time, not a second. Each printf also takes 1 tick of CPU: "
-               f"T1 = 1 + sleep {sl} + 1 · T2 = 1 + loop {wk} + 1 = {wk + 2} ticks of CPU. "
-               "The OS gives each thread a time slice of at most 4 ticks (this policy gets its name, Round Robin, on Lecture Mode slide 14 and is worked out in Demo 4).")
-    lanes, core_lanes, output, total, t1_ready, slices = thread_simulate(nc, sl, wk, 4)
-    st.markdown("**Thread states over time** (one process P0; time slice up to 4 ticks)")
-    io_lane = ["T1's I/O" if x == "BLOCKED" else "idle" for x in lanes["T1"]]
-    render_lanes([("main (T0)" if n == "main" else n, l) for n, l in lanes.items()] + [("I/O device", io_lane)],
-                 {**STATE_COLORS, "T1's I/O": "#FED7AA"})
+        st.caption("Total CPU work = 1 tick start + calculation + 1 tick finish")
+    with c4:
+        st.markdown(f"<div style='font-size:.9rem;font-weight:600;margin-bottom:6px'>Round Robin — Quantum = {QUANTUM}</div>"
+                    f"<div style='border:1px solid #CBD5E1;border-radius:8px;padding:6px 10px;font-weight:700'>{QUANTUM} ticks (fixed)</div>",
+                    unsafe_allow_html=True)
+        st.caption(f"A thread may run for at most {QUANTUM} ticks before a scheduling decision")
+
+    # ---- T2 CPU time calculator
+    st.markdown("**T2 — CPU Time Calculator**")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Start (printf)", "1 tick")
+    k2.metric("Calculation", f"{wk} ticks")
+    k3.metric("Finish (printf)", "1 tick")
+    k4.metric("Total CPU Work", f"{wk + 2} ticks")
+    st.caption("A tick is an abstract unit of time, not a second. This is the simulator's teaching cost model: "
+               "real printf calls do not take a fixed 1 tick. T1 also runs 1 tick before and 1 tick after its wait.")
+
+    lanes, core_lanes, output, total, t1_ready, slices = thread_simulate(nc, sl, wk, QUANTUM)
+    events = thread_events(lanes, core_lanes, sl, wk)
+    t1 = lanes["T1"]
+    wake = next((i for i in range(1, total) if t1[i - 1] == "BLOCKED" and t1[i] != "BLOCKED"), None)
+    back = next((i for i in range(wake or 0, total) if t1[i] == "RUNNING"), None)
+    preempts = [(tk, r) for tk, c, r, kind in slices if kind == "preempted"]
+
+    # ---- scenario summary
+    st.markdown(f"**Current Scenario — {nc} Core{'s' if nc > 1 else ''}, Quantum {QUANTUM}**")
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("T1 blocked time", f"{sl} ticks")
+    s2.metric("T2 CPU time", f"{wk + 2} ticks")
+    s3.metric("Total simulation", f"{total} ticks")
+    s4.metric("T1 back on the CPU at", f"t = {back}",
+              help="After its wait T1 first becomes READY; it runs only when the scheduler gives it a core.")
+    s4.caption(f"BLOCKED t = {t1.index('BLOCKED')}–{wake} ({sl} ticks), then READY {t1_ready} tick(s)")
+    st.caption("These values belong to the scenario on the screen and are recalculated when a parameter changes.")
+
+    # ---- key moments
+    if wake is not None:
+        if t1_ready:
+            st.warning(f"**t = {wake}** → T1 wakes up and enters **READY**: its wait is over, but the core is busy.")
+        else:
+            st.success(f"**t = {wake}** → T1 wakes up and a core is free: it runs immediately (no READY wait).")
+    for tk, r in preempts:
+        st.warning(f"**t = {tk}** → {_tname(r)}'s {QUANTUM}-tick quantum ends; "
+                   f"{', '.join(_tname(x) for cl in core_lanes for x in [cl[tk]] if x not in ('idle', r))} gets the CPU.")
+
+    # ---- timeline with hover explanations
+    st.markdown("**Thread states over time** — hover over a block to see *why* it happened (orange outline = key moment)")
+    tips = {(e[2], e[0]): f"{e[0]}–{e[1]} · {e[2]} {e[3]}: {e[4]}" for e in events}
+    hl = set()
+    if wake is not None:
+        hl.add(("T1", wake))
+    for tk, r in preempts:
+        hl.add((_tname(r), tk)); hl.update((_tname(x), tk) for cl in core_lanes for x in [cl[tk]] if x != "idle")
+    lane_rows = [(_tname(n), l) for n, l in lanes.items()]
+    show_io = st.checkbox("Show External I/O device — optional conceptual example", value=False, key=f"{key}_io",
+                          help="Only for explaining real I/O. sleep() does not make a disk work.")
+    colors = dict(STATE_COLORS)
+    if show_io:
+        lane_rows.append(("I/O device (concept)", ["device works" if x == "BLOCKED" else "idle" for x in t1]))
+        colors["device works"] = "#FED7AA"
+    render_lanes(lane_rows, colors, tips=tips, highlight=hl)
+    st.caption("T1: simulated blocking wait (`sleep`). Sleep does not perform disk I/O; it models a thread waiting without consuming CPU."
+               + (" The I/O row only illustrates what a real device would do during a read()." if show_io else ""))
     st.markdown("**Which thread is on each core?**")
     render_lanes([(f"Core {c}", [("T0" if x == "main" else x) for x in l]) for c, l in enumerate(core_lanes)],
                  {"T0": "#E5E7EB", "T1": "#BFDBFE", "T2": "#BBF7D0"})
-    st.caption("main (T0) = the process's first thread: like a parent it creates T1 and T2, then waits for them in pthread_join (JOIN).")
-    st.caption("States: RUNNING (green) · READY (yellow) · BLOCKED (blue) · BLOCKED in pthread_join (purple) · DONE (grey).")
-    with st.expander("Tick by tick: every tick numbered, with the 4-tick time slice marked", expanded=False):
+
+    # ---- state legend
+    legend = "".join(f"<tr><td style='padding:4px 8px'><span style='background:{STATE_COLORS[s]};border:1px solid #CBD5E1;"
+                     f"border-radius:6px;padding:2px 8px;font-weight:700'>{s}</span></td><td>{m}</td><td style='text-align:center'>{u}</td></tr>"
+                     for s, m, u in STATE_MEANING)
+    st.markdown("<table style='border-collapse:collapse;font-size:.9rem;margin:6px 0'><tr style='background:#F1F5F9'>"
+                "<th style='padding:4px 8px;text-align:left'>State</th><th style='text-align:left'>Meaning</th><th>Uses the CPU?</th></tr>"
+                f"{legend}</table>", unsafe_allow_html=True)
+    st.caption("**READY consumes no CPU. BLOCKED consumes no CPU.** Only RUNNING does. "
+               "main (T0) is the process's first thread: like a parent it creates T1 and T2, then waits in pthread_join.")
+
+    # ---- why table
+    with st.expander("❓ Why did this happen? — every state change explained", expanded=True):
+        key_ticks = {wake} | {tk for tk, _ in preempts}
+        trs = "".join(
+            f"<tr style='{'background:#FFF7ED;font-weight:600' if a in key_ticks else ''}'>"
+            f"<td style='padding:4px 8px;white-space:nowrap'>{a}–{b}</td><td style='white-space:nowrap'>{th}</td>"
+            f"<td style='white-space:nowrap'><span style='background:{STATE_COLORS[s]};border-radius:6px;padding:1px 6px'>{s}</span></td>"
+            f"<td style='padding:4px 8px'>{html_mod.escape(w)}</td></tr>" for a, b, th, s, w in events)
+        st.markdown("<table style='width:100%;border-collapse:collapse;font-size:.88rem'><tr style='background:#F1F5F9'>"
+                    "<th style='padding:4px 8px;text-align:left'>Time</th><th style='text-align:left'>Thread</th>"
+                    "<th style='text-align:left'>State</th><th style='text-align:left'>Why?</th></tr>" + trs + "</table>",
+                    unsafe_allow_html=True)
+        st.caption("Highlighted rows = key moments (T1 wakes up, a quantum ends).")
+
+    with st.expander(f"Tick by tick: every tick numbered, with the {QUANTUM}-tick quantum marked", expanded=False):
         abbr = {"RUNNING": "RUN", "READY": "RDY", "BLOCKED": "BLK", "BLOCKED (join)": "JOIN", "DONE": "·", "—": ""}
-        rows = {("main (T0)" if n == "main" else n): [abbr[x] for x in l] for n, l in lanes.items()}
+        rows = {_tname(n): [abbr[x] for x in l] for n, l in lanes.items()}
         for c, l in enumerate(core_lanes):
             rows[f"Core {c}"] = [("T0" if x == "main" else ("—" if x == "idle" else x)) for x in l]
-        rows["I/O device"] = ["busy" if x == "BLOCKED" else "" for x in lanes["T1"]]
         why = [""] * total
         for n in ("T1", "T2"):
             seq = lanes[n]
             for i in range(total):
                 if seq[i] == "READY":
                     prev = seq[i - 1] if i > 0 else "—"
-                    reason = {"—": "new, waits in queue", "BLOCKED": "woke up (I/O done)", "RUNNING": "preempted (slice over)"}.get(prev)
+                    reason = {"—": "new, waits in queue", "BLOCKED": "wait over (woke up)", "RUNNING": "preempted (quantum over)"}.get(prev)
                     if reason:
                         why[i] = (why[i] + " · " if why[i] else "") + f"{n} {reason}"
         rows["Why READY?"] = why
@@ -1254,35 +1413,63 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
         for tk, c, r, kind in slices:
             who = "T0" if r == "main" else r
             marks[tk] = (marks[tk] + " " if marks[tk] else "") + (f"⏱ {who} out" if kind == "preempted" else f"⏱ {who} stays")
-        rows["4-tick slice"] = marks
+        rows[f"Quantum ({QUANTUM})"] = marks
         grid = pd.DataFrame(rows, index=[str(i) for i in range(total)]).T
-        colors = {"RUN": "#BBF7D0", "RDY": "#FEF08A", "BLK": "#BFDBFE", "JOIN": "#E9D5FF"}
-        st.dataframe(grid.style.map(lambda v: f"background-color: {colors.get(v, '')}" if v in colors else ""), width="stretch")
+        gcol = {"RUN": "#BBF7D0", "RDY": "#FEF08A", "BLK": "#BFDBFE", "JOIN": "#E9D5FF"}
+        st.dataframe(grid.style.map(lambda v: f"background-color: {gcol.get(v, '')}" if v in gcol else ""), width="stretch")
         if slices:
-            st.caption("⏱ out = the time slice ended and another thread was READY, so the OS preempted this one. "
-                       "⏱ stays = the slice ended but nobody else was READY on that core, so the same thread kept the CPU.")
+            st.caption("⏱ out = the quantum ended and another thread was READY, so the OS preempted this one. "
+                       "⏱ stays = the quantum ended but nobody else was waiting for that core, so the same thread kept the CPU.")
         else:
-            st.caption("No thread used a full 4-tick slice in this run.")
+            st.caption(f"No thread used a full {QUANTUM}-tick quantum in this run.")
+    with st.expander(f"What exactly does the scheduler do with Quantum = {QUANTUM}?", expanded=False):
+        st.markdown(f"""
+1. When a core is free, the scheduler takes the thread at the **head of the ready queue** and runs it.
+2. It counts the ticks the thread runs. After **{QUANTUM} ticks** it makes a **scheduling decision**:
+   if another thread is READY and no core is free, the running thread is **preempted** (back to the end of the ready queue);
+   if nobody is waiting, the same thread simply continues.
+3. A thread also gives up the core earlier if it **blocks** (sleep, I/O, join) or **finishes**.
+
+**The quantum limits one scheduling turn, not the total work a thread can do:** T2 needs {wk + 2} ticks of CPU and gets them in turns of at most {QUANTUM}.
+A woken thread becomes READY; *when* it runs depends on the ready-queue order and on this decision, not on the quantum alone.
+""")
     with st.expander("Who decides each parameter?", expanded=False):
         st.markdown("""
 | Parameter | Who decides? | What it really means |
 | --- | --- | --- |
-| CPU cores | Hardware, and the OS's allocation | How many threads can execute at the same instant |
-| Time slice (4 ticks) | **OS** scheduler policy | How long a thread may keep the CPU before the OS can switch |
-| T1 sleep | **Application** developer: `sleep(3)` | Requested wait; when T1 runs again still depends on the scheduler |
-| T2 calculation | **Application**'s workload: the loop | Amount of work; how long it takes depends on CPU, load and policy |
+| Number of CPU cores | Hardware, and the OS's allocation | How many threads can execute at the same instant |
+| Quantum (4 ticks) | **OS** scheduler policy | How long a thread may keep the CPU before the OS can switch |
+| T1 blocking wait | **Application** developer: `sleep(3)` | Requested wait; when T1 runs again still depends on the scheduler |
+| T2 calculation workload | **Application**'s workload: the loop | Amount of work; how long it takes depends on CPU, load and policy |
 | Thread priority | Application **requests**, OS **decides** | e.g. `nice`, `pthread_setschedparam` |
 
 **Application defines the workload. The OS controls CPU allocation. Hardware determines execution capacity.**
 """)
     st.markdown("**Program output, in order**")
     st.code("\n".join(f"t={t:>2}  {line}" for t, line in output), language="text")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total time", f"{total} ticks")
-    m2.metric("T1 READY after waking", f"{t1_ready} tick(s)")
-    blocked_cpu = sum(1 for i, s in enumerate(lanes["T1"]) if s == "BLOCKED" and any(cl[i] == "T2" for cl in core_lanes))
-    m3.metric("Ticks T2 ran while T1 was blocked", blocked_cpu)
-    st.success("T1's wait did not stop T2: while T1 was BLOCKED the scheduler ran T2.")
+
+    # ---- 1 vs 2 cores
+    st.markdown("**What changes when we increase CPU cores from 1 to 2 without changing the application workload?**")
+    comp = []
+    for c_ in (1, 2):
+        l_, cl_, _, tot_, rw_, _ = thread_simulate(c_, sl, wk, QUANTUM)
+        comp.append({"CPU cores": c_, "Total completion time": f"{tot_} ticks", "CPU utilization": f"{_cpu_util(cl_):.0f}%",
+                     "T1 READY wait after waking": f"{rw_} tick(s)", "Selected": "◀ on screen" if c_ == nc else ""})
+    st.dataframe(pd.DataFrame(comp), hide_index=True, width="stretch")
+    st.caption("CPU utilization = used core-ticks ÷ available core-ticks (cores × total time). "
+               "With 2 cores one core is often idle while the other works, so utilization drops even though the program finishes sooner or at the same time.")
+    blocked_cpu = sum(1 for i, s in enumerate(t1) if s == "BLOCKED" and any(cl[i] == "T2" for cl in core_lanes))
+    st.success(f"T1's wait did not stop T2: T2 ran during {blocked_cpu} of T1's {sl} blocked ticks.")
+
+    st.markdown("""
+<div style='border-left:4px solid #0D9488;background:#F0FDFA;padding:10px 14px;border-radius:6px'>
+<b>Engineering Lessons — what did we learn?</b><ul style='margin:6px 0 0 0'>
+<li>A process can contain multiple independently scheduled threads.</li>
+<li>Blocking one thread does not necessarily block the whole process.</li>
+<li>CPU time is different from elapsed time.</li>
+<li>A completed wait makes a thread READY, not automatically RUNNING.</li>
+<li>Quantum limits a scheduling turn, not the total work a thread can perform.</li></ul></div>
+""", unsafe_allow_html=True)
 
 
 APP_THREAD_SCHED = """#include <stdio.h>
@@ -1463,13 +1650,17 @@ Careful: while devices work, the CPU may still run **interrupt handlers and driv
                 "Tek çekirdekte T1 uyandığında T2 çalışıyorsa T1 1 tık READY bekliyor. İki çekirdekte hiç beklemiyor.",
                 "Hesap süresini 1'e indirin ya da uykuyu 8'e çıkarın: 'Finished' satırlarının sırası değişiyor. Sıra garanti değil.",
                 "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin.",
-                "Round Robin'i henüz anlatmadık: burada sezgisel söyleyin, 'OS her thread'e en fazla 4 tıklık bir zaman dilimi veriyor'. Adını LM 14'teki preemption demosunda koyup Demo 4'te (LM 18) ayrıntılandırın; ikisinde de bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri dilimin dolduğu anları gösterir."],
+                "Kontrolde 'Round Robin — Quantum = 4' yazıyor. Burada yalnızca şunu söyleyin: 'bir thread en fazla 4 tick çalışır, sonra scheduler karar verir'. Algoritmanın ayrıntısını LM 14'teki preemption demosunda ve Demo 4'te (LM 18) işleyin; ikisinde de bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri quantum'un dolduğu anları gösterir.",
+                "Anlatım sırası: 1) 1 çekirdek, bekleme 3, hesap 6, quantum 4. 2) T2 CPU Time Calculator: 6 hesap + 2 printf = 8 tick. 3) T1'in 2–5 arası BLOCKED olduğunu gösterin. 4) Sorun: T1 t=5'te READY, neden RUNNING değil? 5) t=6'da T2'nin quantum'u doluyor, T1 seçiliyor (turuncu çerçeveli bloklar, 'Why did this happen?' tablosu). 6) Çekirdeği 2 yapın: aynı thread'ler farklı çekirdeklerde, toplam 12 → 10 tick, kullanım %100 → %60. 7) Bekleme süresini artırın ve toplam süreye etkisini karşılaştırın.",
+                "Zaman çizelgesindeki bir bloğun üzerine gelince 'neden?' açıklaması çıkıyor. Öğrencilere renkleri ezberletmeyin; her geçişte scheduler'ın hangi kararı verdiğini sordurun."],
         "say_en": ["If time allows, measure it (preview of Week 11): with /usr/bin/time -v, real is about 3 s and user much smaller; voluntary context switches count blocking, involuntary ones count preemption. Numbers vary by machine; let students record their own.",
                    "Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
                    "On one core, if T2 is running when T1 wakes, T1 waits 1 tick in READY. On two cores it does not wait at all.",
                    "Set the calculation to 1 or the sleep to 8: the order of the 'Finished' lines changes. The order is not guaranteed.",
                    "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU.",
-                   "We have not taught Round Robin yet: say it intuitively here, 'the OS gives each thread a time slice of at most 4 ticks'. Name it in the preemption demo on LM 14, work it out in Demo 4 (LM 18), and come back to this demo both times. The ⏱ marks in the tick table show when a slice ended."],
+                   "The control reads 'Round Robin — Quantum = 4'. Here only say: 'a thread runs for at most 4 ticks, then the scheduler decides'. Work out the algorithm in the preemption demo on LM 14 and in Demo 4 (LM 18), and come back to this demo both times. The ⏱ marks in the tick table show when a quantum ended.",
+                   "Teaching order: 1) 1 core, wait 3, calculation 6, quantum 4. 2) T2 CPU Time Calculator: 6 calculation + 2 printf = 8 ticks. 3) Show T1 BLOCKED from 2 to 5. 4) Ask: T1 is READY at t=5, why not RUNNING? 5) At t=6 T2's quantum ends and T1 is picked (orange-outlined blocks, 'Why did this happen?' table). 6) Set 2 cores: the same threads on different cores, total 12 → 10 ticks, utilization 100% → 60%. 7) Increase the wait and compare its effect on the total time.",
+                   "Hovering over a timeline block shows why it happened. Do not let students memorize colors; ask which scheduler decision each change reflects."],
         "qa": [("T1 bloke iken T2 çalışabilir mi?",
                 "Evet. Varsayılan ayarlarda T2, T1'in uyuduğu 3 tıkın hepsinde çalışıyor.",
                 "Can T2 run while T1 is blocked?",
@@ -1498,6 +1689,14 @@ Careful: while devices work, the CPU may still run **interrupt handlers and driv
                 "T2 döngüden önce ve sonra birer printf yapıyor; simülatör her printf'i 1 tick CPU sayıyor: 1 + 6 + 1 = 8. Aynı şekilde T1 de uykudan önce ve sonra 1'er tick çalışıyor.",
                 "T2's calculation is set to 6, but T2 is RUNNING for 8 ticks. Why?",
                 "T2 prints once before and once after the loop, and the simulator counts each printf as 1 tick of CPU: 1 + 6 + 1 = 8. Likewise T1 runs 1 tick before and 1 tick after its sleep."),
+               ("T1 3 tick bloke kalıyor ama neden t=6'da, yani bloke olduktan 4 tick sonra tekrar çalışıyor?",
+                "T1 t=2–5 arası BLOCKED (3 tick). t=5'te bekleme bitiyor ve T1 READY oluyor, ama çekirdekte T2 var. T2'nin 4 tick'lik quantum'u t=6'da doluyor ve scheduler T1'i seçiyor. Yani 3 tick bekleme + 1 tick READY. İki çekirdekte boş çekirdek olduğu için READY beklemesi 0.",
+                "T1 is blocked for 3 ticks, so why does it run again only at t=6, 4 ticks after blocking?",
+                "T1 is BLOCKED from t=2 to 5 (3 ticks). At t=5 the wait ends and T1 becomes READY, but T2 is on the core. T2's 4-tick quantum ends at t=6 and the scheduler picks T1. So 3 ticks of waiting + 1 tick READY. With 2 cores a core is free, so the READY wait is 0."),
+               ("Çekirdek 2 olunca CPU kullanımı neden %100'den %60'a düşüyor?",
+                "Kullanım = kullanılan çekirdek-tick ÷ kullanılabilir çekirdek-tick. Tek çekirdekte 12 tick'in hepsi dolu (12/12). İki çekirdekte program 10 tick'te bitiyor ama 20 çekirdek-tick'in yalnızca 12'si dolu: bir çekirdek çoğu zaman boş. Program hızlandı, ama donanımın tamamı kullanılmadı.",
+                "With 2 cores, why does CPU utilization drop from 100% to 60%?",
+                "Utilization = used core-ticks ÷ available core-ticks. On one core all 12 ticks are busy (12/12). On two cores the program finishes in 10 ticks, but only 12 of the 20 core-ticks are used: one core is mostly idle. The program got faster, but not all hardware was used."),
                ("Tick nedir?",
                 "Simülatörün soyut zaman birimi; mutlaka 1 saniye ya da 1 milisaniye değildir. Gerçek süreleri sitedeki 🔬 gerçek ölçüm gösterir.",
                 "What is a tick?",
@@ -1688,8 +1887,10 @@ def _steps_table(rows, cols):
     st.table(pd.DataFrame(rows, columns=cols).set_index(cols[0]))
 
 
-def render_lanes(lanes, colors, total=None):
-    """lanes: list of (label, timeline list of names per ms). Draws one row per lane."""
+def render_lanes(lanes, colors, total=None, tips=None, highlight=None):
+    """lanes: list of (label, timeline list of names per ms). Draws one row per lane.
+    tips: {(label, start): hover text}; highlight: {(label, start)} drawn with an orange outline."""
+    tips, highlight = tips or {}, highlight or set()
     total = total or max(len(tl) for _, tl in lanes)
     html = ""
     for label, tl in lanes:
@@ -1702,8 +1903,11 @@ def render_lanes(lanes, colors, total=None):
                  f"<div style='display:flex;gap:2px;flex:1'>")
         for name, a, b in segs:
             bg = colors.get(name, "#E5E7EB") if name != "idle" else "#FFFFFF"
-            html += (f"<div style='width:{(b-a)/total*100}%;background:{bg};border:1px solid #CBD5E1;border-radius:8px;"
-                     f"padding:6px 2px;text-align:center;font-weight:700;font-size:.8rem'>{'' if name == 'idle' else name}"
+            shown = {"RUNNING": "RUN", "BLOCKED": "BLK", "BLOCKED (join)": "JOIN"}.get(name, name) if (b - a) / total < 0.1 else name
+            tip = html_mod.escape(tips.get((label, a), ""), quote=True)
+            border = "3px solid #EA580C" if (label, a) in highlight else "1px solid #CBD5E1"
+            html += (f"<div title='{tip}' style='width:{(b-a)/total*100}%;background:{bg};border:{border};border-radius:8px;"
+                     f"padding:6px 2px;text-align:center;font-weight:700;font-size:.8rem'>{'' if name == 'idle' else shown}"
                      f"<br><span class='small'>{a}-{b}</span></div>")
         html += "</div></div>"
     st.markdown(html, unsafe_allow_html=True)
