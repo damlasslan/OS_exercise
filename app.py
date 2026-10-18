@@ -651,9 +651,9 @@ QA = {
          "What do these parameters correspond to in real life?",
          "CPU probability 100 = CPU-bound work such as video encoding or compiling; 0 = I/O-bound work such as copying files or servers waiting for disk/network. Instructions = length of the job. SWITCH_ON_IO = today's operating systems; SWITCH_ON_END = old single-tasking systems (e.g. MS-DOS)."),
         ("Gerçek bir programın CPU-bound mı I/O-bound mı olduğunu nasıl anlarız?",
-         "Ölçeriz: time ./program çıktısında user + sys ≈ real ise CPU-bound, real ≫ user + sys ise I/O-bound. top/htop %CPU, vmstat iowait gösterir.",
+         "Ölçeriz. time ./program çıktısında user + sys ≈ real ise CPU-bound. real ≫ user + sys ise program bekliyor demektir; nerede beklediğini araştırırız: I/O, kilit, sleep veya CPU sırası. I/O için iostat / pidstat -d, kilitler için perf kullanılır. vmstat'taki wa sistem geneli bir değerdir, sürece ait değildir.",
          "How do we find out whether a real program is CPU-bound or I/O-bound?",
-         "We measure it: in time ./program, user + sys ≈ real means CPU-bound; real ≫ user + sys means I/O-bound. top/htop show %CPU, vmstat shows iowait."),
+         "We measure it. In time ./program, user + sys ≈ real means CPU-bound. real ≫ user + sys means the program is waiting; we then investigate where: I/O, a lock, sleep or the run queue. Use iostat / pidstat -d for I/O and perf for locks. vmstat's wa is system-wide, not per process."),
         ("P0 I/O beklerken CPU'yu kim kullanır?",
          "P1. Zaman 2–5 arasında P0 BLOCKED, P1 RUN:cpu ve CPU sütununda 1 var. Sonuç: Total Time 7, CPU %85,71.",
          "While P0 waits for I/O, who uses the CPU?",
@@ -1089,9 +1089,23 @@ PARAM_TABLE = """
 
 **In real life we do not set a probability — we measure it:**
 
-- `time ./program` → if **user + sys ≈ real**, the program is CPU-bound; if **real ≫ user + sys**, it spends most of its time waiting (I/O-bound).
-- `top` / `htop` show %CPU per process; `vmstat` shows the CPU's *iowait*.
-- **Engineering decision:** for CPU-bound work use about as many threads as cores; for I/O-bound work more threads help (most of them are waiting); give unimportant background work a low priority with `nice`.
+- `time ./program` → if **user + sys ≈ real**, the program is CPU-bound. If **real ≫ user + sys**, the program is **waiting** — then find out *where*: I/O is one possible cause; locks, `sleep` or waiting for a CPU are others.
+- `top` / `htop` show %CPU per process. `vmstat`'s `wa` (iowait) is **system-wide** idle time spent waiting for I/O, not the I/O wait of one program.
+- **Starting points, not formulas:** CPU-bound → about as many active compute threads as cores; I/O-bound → more concurrent work or async I/O helps, but not unlimited threads. Always verify on the real workload.
+
+**The same tools exist on both systems:**
+
+| Goal | Windows | Linux |
+| --- | --- | --- |
+| Watch CPU usage | Task Manager | `top`, `htop` |
+| Inspect threads | Process Explorer | `top -H`, `ps -L` (in htop press `H`) |
+| Analyze CPU and I/O waits | Windows Performance Analyzer | `perf`, `iostat`, `pidstat` |
+| Measure run time / profile | Visual Studio Profiler | `time`, `perf` |
+| Change CPU priority | Task Manager / Windows API | `nice`, `renice` |
+
+**How engineers actually work: 1 Measure → 2 Identify the bottleneck (CPU-bound? I/O-bound? lock contention?) → 3 Optimize (thread count, async I/O, work distribution) → 4 Measure again.**
+
+> In OSTEP *we choose* the CPU probability because we design an experiment. In real software engineering *we measure* the workload, find the bottleneck, design the fix and measure again.
 """
 
 
@@ -1341,6 +1355,10 @@ THREAD_SLIDES = [
                 "dd her senkron yazmada diski bekleyip bloke oluyor: 327 voluntary context switch. Uykusuz thread_demo neredeyse hiç beklemiyor: CPU payı %88. Involuntary sayısı sunucudaki diğer yüke göre değişiyor.",
                 "In the real measurement, why is voluntary high for the I/O job and CPU share high for the CPU job?",
                 "dd blocks on every synchronous write while waiting for the disk: 327 voluntary context switches. thread_demo without sleep hardly waits: 88% CPU share. The involuntary count varies with other load on the server."),
+               ("real ≫ user + sys her zaman I/O-bound demek mi?",
+                "Hayır. Sadece programın beklediğini gösterir. Bekleme I/O olabilir, ama kilit, sleep veya CPU sırası beklemek de olabilir. Bizim thread_demo %5 CPU payıyla bekliyor, ama sebebi I/O değil sleep(3).",
+                "Does real ≫ user + sys always mean I/O-bound?",
+                "No. It only shows that the program waits. The wait may be I/O, but also a lock, sleep or waiting for a CPU. Our thread_demo waits with a 5% CPU share, but the reason is sleep(3), not I/O."),
                ("Main thread neden iki thread'i de bekliyor?",
                 "pthread_join() olmasaydı main return edip process'i bitirebilir, T1 ve T2'nin işi yarıda kalırdı.",
                 "Why does the main thread wait for both threads?",
@@ -1481,7 +1499,8 @@ def render_real_measure(key):
         if share >= 0.8:
             st.success(f"real ≈ user + sys → CPU-bound: the program computed {share * 100:.0f}% of the time.")
         elif share <= 0.3:
-            st.warning(f"real ≫ user + sys → mostly waiting (I/O or sleep): the CPU was busy only {share * 100:.0f}% of the time.")
+            st.warning(f"real ≫ user + sys → the program mostly waited: the CPU was busy only {share * 100:.0f}% of the time. "
+                       "Here we know why (sleep or synchronous disk writes); in general, investigate where it waits: I/O, a lock, sleep or the run queue.")
         else:
             st.info(f"A mix of computing and waiting: CPU busy {share * 100:.0f}% of the time.")
         if kind != "io":
