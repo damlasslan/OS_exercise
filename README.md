@@ -1,26 +1,23 @@
 # OS Exercise Lab
 
-A no-code Operating Systems teaching interface built for classroom demos.
+A no-code Operating Systems teaching site for CENG 331 (Week 6 · CPU Scheduling), built with Streamlit and the OSTEP homework simulators.
 
-The app provides a Streamlit web interface for OSTEP-style simulations:
+Live: https://damlasslan-os-exercise.streamlit.app/
 
-- Process states: READY, RUNNING, WAITING
-- CPU scheduling: FCFS, SJF, Round Robin
-- Threads, interleaving, lost update, data race
+## What is on the site
 
-## Architecture
+| Tab | Content |
+| --- | --- |
+| 🎓 Lecture Mode | 22 slides: OSTEP and the four layers, process states, Demo 1 (SWITCH_ON_IO / SWITCH_ON_END), thread-level scheduling (main/T0, T1, T2) with real measurement, concurrency vs parallelism, Demo 2 (lost update + mutex), preemption, FCFS/SJF/SRTF, Demo 3 and 4 (Round Robin quantum), Priority/MLFQ, metrics, multicore |
+| Overview | What the lab is for |
+| 1 Process States | OSTEP `process-run.py` with parameter explanations (what they mean, real-life examples, how to measure) |
+| 2 Threads & Data Race | 2a thread-level scheduling simulator · 2b lost update (table + OSTEP `x86.py`) · 2c real measurement of `real/thread_demo.c` on the server |
+| 3 CPU Scheduling | FCFS / SJF / Round Robin Gantt charts for 2–4 processes |
+| 4 Real-World Systems | Banking, robotic surgery, ticket reservation, video streaming — each with a synchronization demo and a scheduling demo |
+| Instructor Notes | Teaching order and the four-layer pattern |
 
-```text
-Browser / Streamlit UI
-        ↓
-User selects scenario parameters
-        ↓
-Streamlit backend
-        ↓
-OSTEP Python scripts / classroom visualizer
-        ↓
-Visual output for teaching
-```
+Every live demo follows four layers: **application code → OS kernel pseudocode → run on site → observed result**.
+Each slide has a collapsed 📝 instructor panel (Turkish + English): notes, questions with answers, the board drawing and a board video.
 
 ## Run locally
 
@@ -29,36 +26,20 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app automatically downloads the official OSTEP homework repository when it first needs it.
+The OSTEP homework repository is downloaded on first use. The real-measurement panel needs Linux and `gcc`
+(on Streamlit Community Cloud `packages.txt` installs `build-essential`).
 
-## Deploy online with Streamlit Community Cloud
-
-1. Create a public GitHub repository named `OS_exercise`.
-2. Upload these files to the repository.
-3. Go to Streamlit Community Cloud.
-4. Choose the repository.
-5. Set the main file path to:
+## Repository layout
 
 ```text
-app.py
+app.py                 the whole site
+real/thread_demo.c     the POSIX threads program measured on the server
+assets/board/          board drawings (JPG) and their narration steps (manifest.json, TR + EN)
+assets/video/          board videos with Turkish captions; assets/video/en/ with English captions
+docs/instructor_script.md
 ```
-
-6. Deploy.
-
-## Classroom use
-
-Recommended pattern:
-
-```text
-Predict → Run → Observe → Explain
-```
-
-Recommended demo order:
-
-1. CPU-bound vs I/O-bound process
-2. Same jobs with different scheduling policies
-3. Two threads incrementing one shared counter
 
 ## Credits
 
-This app is designed as a teaching interface around the concepts and simulation style of OSTEP: Operating Systems: Three Easy Pieces.
+Simulators: OSTEP — *Operating Systems: Three Easy Pieces*, R. H. and A. C. Arpaci-Dusseau,
+https://pages.cs.wisc.edu/~remzi/OSTEP/ and https://github.com/remzi-arpacidusseau/ostep-homework

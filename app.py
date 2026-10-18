@@ -601,12 +601,13 @@ SAY_EN = {
     12: ["The program is three instructions: read, add, write. If the interrupt lands between them, an update is lost.",
          "The code never changed, only the interrupt timing. A program that relies on timing for correctness is broken."],
     13: ["On Linux a thread waiting for a lock is put to sleep with a futex. Scheduling ≠ synchronization."],
-    14: ["FCFS: P2 arrived at time 3 but waits until P1 finishes.",
+    14: ["Link back: in the thread demo (LM 9) we said 'the OS gives each thread a time slice of at most 4 ticks'. That policy is Round Robin and the slice is the quantum; here the quantum is 2.",
+         "FCFS: P2 arrived at time 3 but waits until P1 finishes.",
          "RR q=2: at time 2 P2 has not arrived yet, so P1 continues; at time 4 it is P2's turn."],
     15: ["The total work is still 14 ms. Only the order changed. A real OS does not know job lengths; it estimates them from the past."],
     16: ["SRTF is not on the site; draw it on the board. If short jobs keep arriving, a long job can starve."],
     17: ["The answer is SJF: P3 finishes at time 2, P2 at time 5. But SJF assumes job lengths are known in advance."],
-    18: ["Link back: in the thread demo (LM 9) we said 'the OS gives each thread a time slice of at most 4 ticks'. That policy is called Round Robin, and the slice is the quantum.",
+    18: ["Link back: we named Round Robin on LM 14 and now study it in detail; the 4-tick time slice in the thread demo (LM 9) was also a quantum.",
          "The two P1 boxes at 9–13 and 13–17 are not a real switch; nobody else is in the queue.",
          "Tiny quantum: everyone gets a turn quickly, but switching costs grow. Huge quantum: RR turns into FCFS."],
     19: ["Matching the SJF order is a coincidence. Present MLFQ as a strategy, not as implementation detail."],
@@ -961,7 +962,8 @@ SLIDES = [
         "demo": "schedule",
         "demo_args": {"jobs": [("P1", 0, 10), ("P2", 3, 2), ("P3", 20, 1), ("P4", 20, 1)], "n_jobs": 2, "policy": "FCFS", "quantum": 2},
         "board": ["V04_1"],
-        "say": ["FCFS: P2 zaman 3'te geldi ama P1 bitene kadar bekliyor.",
+        "say": ["Geri bağlantı: thread demosunda (LM 9) 'OS her thread'e en fazla 4 tıklık zaman dilimi veriyor' demiştik. O politikanın adı Round Robin, dilimin adı quantum; burada quantum 2.",
+                "FCFS: P2 zaman 3'te geldi ama P1 bitene kadar bekliyor.",
                 "RR q=2: zaman 2'de P2 henüz yok, P1 devam eder; zaman 4'te sıra P2'ye geçer."],
     },
     {
@@ -1018,7 +1020,7 @@ SLIDES = [
         "demo": "schedule",
         "demo_args": {"jobs": [("P1", 0, 12), ("P2", 0, 3), ("P3", 0, 2), ("P4", 20, 1)], "n_jobs": 3, "policy": "Round Robin", "quantum": 4},
         "board": ["V07_1", "V08_2"],
-        "say": ["Geri bağlantı: thread demosunda (LM 9) 'OS her thread'e en fazla 4 tıklık zaman dilimi veriyor' demiştik. Bu politikanın adı Round Robin, o dilimin adı quantum.",
+        "say": ["Geri bağlantı: LM 14'te adını koyduğumuz Round Robin'i şimdi ayrıntılı inceliyoruz; thread demosundaki (LM 9) 4 tıklık zaman dilimi de bir quantum'du.",
                 "9–13 ve 13–17 arasındaki iki P1 kutusu gerçek bir switch değil; kuyrukta başka iş yok.",
                 "Küçük quantum: herkes çabuk sıra alır ama switch maliyeti artar. Büyük quantum: RR, FCFS'e döner."],
     },
@@ -1217,7 +1219,7 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
                        help="The for-loop in calculator(): pure CPU work.")
     st.caption(f"A tick is an abstract unit of time, not a second. Each printf also takes 1 tick of CPU: "
                f"T1 = 1 + sleep {sl} + 1 · T2 = 1 + loop {wk} + 1 = {wk + 2} ticks of CPU. "
-               "The OS gives each thread a time slice of at most 4 ticks (we name this policy Round Robin later, in Demo 4).")
+               "The OS gives each thread a time slice of at most 4 ticks (this policy gets its name, Round Robin, on Lecture Mode slide 14 and is worked out in Demo 4).")
     lanes, core_lanes, output, total, t1_ready, slices = thread_simulate(nc, sl, wk, 4)
     st.markdown("**Thread states over time** (one process P0; time slice up to 4 ticks)")
     render_lanes([("main (T0)" if n == "main" else n, l) for n, l in lanes.items()], STATE_COLORS)
@@ -1333,7 +1335,7 @@ THREAD_SLIDES = [
         "kicker": "Slide 8 · Thread-level scheduling · Layers 1–2",
         "title": "One process, two threads: who does the OS schedule?",
         "body": """
-        Previous week: a process can contain several threads. This week: the OS <b>schedules those threads</b>.
+        In Week 4 we saw that a process can contain several threads. This week: the OS <b>schedules those threads</b>.
         <br>In process <b>P0</b>, <b>T1 (file reader)</b> is <b>BLOCKED</b> waiting for the disk, while
         <b>T2 (calculator)</b> is <b>RUNNING</b> on CPU core 0.
         <br><br><b>main (T0)</b> is the process's first thread, the one that runs <code>main()</code>. Like a <i>parent</i>, it creates
@@ -1346,13 +1348,13 @@ THREAD_SLIDES = [
         "terms": ["Thread", "Main thread", "Blocking call", "pthread_join"],
         "code": (("app", "Application code · C (POSIX threads)", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED)),
         "board": ["V18_1"],
-        "say": ["Geçen hafta bir process'in birden çok thread içerebileceğini gördük. Bu hafta OS'nin bu thread'leri nasıl zamanladığını görüyoruz.",
+        "say": ["Week 4'te bir process'in birden çok thread içerebileceğini gördük. Bu hafta OS'nin bu thread'leri nasıl zamanladığını görüyoruz.",
                 "T1 bloke, ama bu bütün uygulamanın durması demek değil: T2 çalışmaya devam edebilir.",
                 "sleep(3) gerçek dosya okuma değil; thread'in CPU kullanmadan beklemesini temsil ediyor. Gerçek I/O için read() kullanılabilir.",
                 "pthread_create() kullanıcı alanındaki kütüphane arayüzü; Linux'ta thread'i kernel mekanizmaları oluşturur.",
                 "main (T0) process'in ilk thread'i. Week 3'teki ebeveyn-çocuk ilişkisini hatırlatın: ebeveyn fork() ile çocuk yaratıp wait() ile bekliyordu; burada main pthread_create() ile T1 ve T2'yi yaratıp pthread_join() ile bekliyor.",
                 "Teknik not: POSIX thread'leri eşittir, OS aralarında ebeveyn-çocuk hiyerarşisi tutmaz; herhangi bir thread başka bir thread'i join edebilir. 'Ebeveyn' process'lerden ödünç alınmış bir benzetme."],
-        "say_en": ["Last week we learned that a process can contain multiple threads. This week we learn how the OS schedules those threads.",
+        "say_en": ["In Week 4 we learned that a process can contain multiple threads. This week we learn how the OS schedules those threads.",
                    "T1 is blocked, but that does not mean the entire application must stop: T2 can still run.",
                    "sleep(3) is not a real file read; it stands for a thread waiting without using the CPU. For real blocking I/O we could use read().",
                    "pthread_create() is a user-space library interface; on Linux the thread is created by kernel mechanisms.",
@@ -1393,13 +1395,13 @@ THREAD_SLIDES = [
                 "Tek çekirdekte T1 uyandığında T2 çalışıyorsa T1 1 tık READY bekliyor. İki çekirdekte hiç beklemiyor.",
                 "Hesap süresini 1'e indirin ya da uykuyu 8'e çıkarın: 'Finished' satırlarının sırası değişiyor. Sıra garanti değil.",
                 "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin.",
-                "Round Robin'i henüz anlatmadık: burada sezgisel söyleyin, 'OS her thread'e en fazla 4 tıklık bir zaman dilimi veriyor'. Adını Demo 4'te (LM 18) koyup bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri dilimin dolduğu anları gösterir."],
+                "Round Robin'i henüz anlatmadık: burada sezgisel söyleyin, 'OS her thread'e en fazla 4 tıklık bir zaman dilimi veriyor'. Adını LM 14'teki preemption demosunda koyup Demo 4'te (LM 18) ayrıntılandırın; ikisinde de bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri dilimin dolduğu anları gösterir."],
         "say_en": ["If time allows, measure it (preview of Week 11): with /usr/bin/time -v, real is about 3 s and user much smaller; voluntary context switches count blocking, involuntary ones count preemption. Numbers vary by machine; let students record their own.",
                    "Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
                    "On one core, if T2 is running when T1 wakes, T1 waits 1 tick in READY. On two cores it does not wait at all.",
                    "Set the calculation to 1 or the sleep to 8: the order of the 'Finished' lines changes. The order is not guaranteed.",
                    "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU.",
-                   "We have not taught Round Robin yet: say it intuitively here, 'the OS gives each thread a time slice of at most 4 ticks'. Name it in Demo 4 (LM 18) and come back to this demo. The ⏱ marks in the tick table show when a slice ended."],
+                   "We have not taught Round Robin yet: say it intuitively here, 'the OS gives each thread a time slice of at most 4 ticks'. Name it in the preemption demo on LM 14, work it out in Demo 4 (LM 18), and come back to this demo both times. The ⏱ marks in the tick table show when a slice ended."],
         "qa": [("T1 bloke iken T2 çalışabilir mi?",
                 "Evet. Varsayılan ayarlarda T2, T1'in uyuduğu 3 tıkın hepsinde çalışıyor.",
                 "Can T2 run while T1 is blocked?",
@@ -2499,11 +2501,13 @@ def main():
         **OSTEP** (*Operating Systems: Three Easy Pieces*) provides the simulation scripts.
         **This Streamlit app** provides a classroom-friendly visual interface.
         """)
-        col1,col2,col3 = st.columns(3)
+        col1,col2,col3,col4 = st.columns(4)
+        with col4:
+            scenario_card("real-world", "Four real systems", "banking, robotic surgery, tickets, video — sync + scheduling")
         with col1:
             scenario_card("cpu-intro", "Process states", "READY, RUNNING, WAITING")
         with col2:
-            scenario_card("threads-intro", "Thread interleavings", "lost update and data race")
+            scenario_card("threads-intro", "Threads", "thread-level scheduling, lost update and data race")
         with col3:
             scenario_card("cpu-sched", "Scheduling policies", "FCFS, SJF, Round Robin")
         st.markdown("""
@@ -2557,12 +2561,13 @@ def main():
         3. **Run on site** — enter the parameters and predict before running.
         4. **Observed result** — total time, CPU utilization, waiting time, final value.
 
-        Recommended order:
+        Recommended order (Week 6, 180 minutes; full script in *Week6_Ders_Senaryosu_v3.docx*):
 
-        - Process states: `READY → RUNNING → WAITING` · SWITCH_ON_IO vs SWITCH_ON_END
-        - Threads: `shared memory + interleaving → data race` · fix with a mutex
-        - Scheduling: `same jobs + different policy → different waiting time`
-        - Real-world systems: banking, robotic surgery, ticket reservation, video streaming
+        - 00–45 · Process states: `READY → RUNNING → WAITING` · SWITCH_ON_IO vs SWITCH_ON_END · thread-level scheduling (main/T0, T1, T2) · optional real measurement
+        - 45–70 · Threads: `shared memory + interleaving → data race` · fix with a mutex
+        - 70–100 · Real-world systems (synchronization + scheduling) · preemption
+        - 110–160 · Scheduling: `same jobs + different policy → different waiting time`
+        - 160–180 · Multicore and wrap-up
         """)
         st.markdown("""
         **Important explanation:** Multithreading is not the problem.

@@ -1,55 +1,27 @@
-# Instructor Script — OS Exercise Lab
+# Instructor Script — Week 6 · CPU Scheduling
 
-## Opening
+The full step-by-step script (Turkish) is the Word file *Week6_Ders_Senaryosu_v3.docx*; slide numbers refer to
+*Week6_CPU_Scheduling_101_Visual_StepByStep_v3.pptx* (PPT) and to the site's Lecture Mode (LM).
 
-Today we will not write kernel code. We will observe operating-system behavior through simulations.
+Teaching pattern for every demo: **Predict → Run → Observe → Explain**, across four layers
+(application code → OS kernel → run on site → result).
 
-The teaching flow is:
+## Plan (180 minutes)
 
-```text
-Predict → Run → Observe → Explain
-```
+| Time | PPT | LM | Content |
+| --- | --- | --- | --- |
+| 00–45 | 1–25 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling (optional: PPT 119–120 measure it yourself) |
+| 45–70 | 26–42 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) |
+| 70–100 | 43–64 | 14 + Real-World | Four real systems (synchronization + scheduling), preemption; Round Robin is first named on LM 14 |
+| 100–110 | — | — | Break |
+| 110–160 | 65–103 | 15–20 | FCFS, SJF, SRTF, Demo 3, Demo 4 (Round Robin quantum), Priority, MLFQ, metrics, practice |
+| 160–180 | 104–118 | 21–22 | Multicore, bank example, wrap-up |
 
-## Scenario 1 — Process States
+## Key messages
 
-Ask before running:
-
-> If one process waits for I/O, should the CPU stay idle?
-
-Run the CPU-bound vs I/O-bound scenario.
-
-Explain:
-
-- A process may be READY but not running.
-- A process waiting for I/O is not using the CPU.
-- The scheduler can run another READY process.
-
-## Scenario 2 — CPU Scheduling
-
-Use the same workload with FCFS, SJF and Round Robin.
-
-Ask:
-
-> Did the jobs change? Did the CPU change? What changed?
-
-Explain:
-
-Only the scheduling policy changed; waiting time and turnaround time changed.
-
-## Scenario 3 — Threads and Data Race
-
-Ask:
-
-> If two threads each add 1 to counter=5, what should the result be?
-
-Show safe execution first, then interleaved execution.
-
-Explain:
-
-- `counter++` is not necessarily one atomic step.
-- It can be LOAD → ADD → STORE.
-- If both threads load the old value, one update can be lost.
-
-Main message:
-
-> Multithreading is not the problem. Unsynchronized shared state is the problem.
+- A blocked thread uses no CPU; the OS runs another READY thread (Demo 1, thread demo).
+- main (T0) is the process's first thread: like a parent it creates T1 and T2 and waits in `pthread_join` (cf. `fork()`/`wait()` in Week 3).
+- `counter++` is LOAD → ADD → STORE; unsynchronized shared state loses updates even on one core (Demo 2).
+- Same jobs, different policy, different waiting time (Demos 3–4).
+- Measure first: `real ≈ user + sys` → CPU-bound; `real ≫ user + sys` → the program waits — find out where (I/O, lock, sleep, run queue).
+- Scheduling ≠ synchronization: speed and timing come from the scheduler, correctness from locks, transactions and atomic operations.
