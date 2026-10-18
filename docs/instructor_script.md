@@ -24,6 +24,7 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 - A woken thread becomes READY first; when it runs depends on the ready-queue order and the scheduler, not only the quantum.
 - main (T0) is the process's first thread: like a parent it creates T1 and T2 and waits in `pthread_join` (cf. `fork()`/`wait()` in Week 3).
 - `counter++` is LOAD → ADD → STORE; unsynchronized shared state loses updates even on one core (Demo 2).
+- Week 5's five tools seen by the scheduler (LM 13): mutex, semaphore and condition variable make a waiter BLOCKED; a spinlock leaves it RUNNING and burning CPU (live: 1 core 15 vs 13 ticks, 2 cores 9 vs 10); an atomic operation never waits.
 - Same jobs, different policy, different waiting time (Demos 3–4).
 - Measure first: `real ≈ user + sys` → CPU-bound; `real ≫ user + sys` → the program waits — find out where (I/O, lock, sleep, run queue).
 - Scheduling ≠ synchronization: speed and timing come from the scheduler, correctness from locks, transactions and atomic operations.
