@@ -266,12 +266,17 @@ def render_thread_demo(key_prefix, backend_open=False):
 # Lecture Mode content
 # ---------------------------------------------------------------------------
 @st.cache_data
+def _load_manifest(path_str, mtime):
+    data = json.loads(Path(path_str).read_text(encoding="utf-8"))
+    return {f"{e['code']}_{e['board']}": e for e in data}
+
+
 def board_manifest():
+    # keyed on the file's modification time, so a redeploy with new boards is picked up
     path = ASSETS / "board" / "manifest.json"
     if not path.exists():
         return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {f"{e['code']}_{e['board']}": e for e in data}
+    return _load_manifest(str(path), path.stat().st_mtime)
 
 
 # ---------------------------------------------------------------------------
