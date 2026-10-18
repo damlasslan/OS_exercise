@@ -1789,6 +1789,12 @@ def measure_child(cmd, pin_cpu=None, timeout=40):
             "out": out, "err": err, "rc": p.returncode}
 
 
+REAL_WORKLOAD_HELP = {
+    "mixed": "The demo program: T1 sleeps 3 s (waits, no CPU), T2 computes. Expect: wall ≈ 3 s, CPU share only a few %, "
+             "a few voluntary switches (sleep, join).",
+    "cpu": "Same program with sleep 0: only computing. Expect: wall ≈ user + sys, CPU share high, few voluntary switches.",
+    "io": "Writes 32 MB to disk and waits for each write. Expect: low CPU share, mostly sys time, hundreds of voluntary switches.",
+}
 REAL_WORKLOADS = {
     "thread_demo: T1 sleeps 3 s, T2 computes": "mixed",
     "CPU-bound: thread_demo without the sleep": "cpu",
@@ -1805,22 +1811,34 @@ def render_real_measure(key):
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
         wl = st.radio("Program", list(REAL_WORKLOADS), key=f"{key}_wl")
+        st.caption(REAL_WORKLOAD_HELP[REAL_WORKLOADS[wl]])
+    kind = REAL_WORKLOADS[wl]
     with c2:
         iters = st.select_slider("T2 loop iterations", options=[10_000_000, 50_000_000, 100_000_000, 300_000_000],
-                                 value=100_000_000, key=f"{key}_it", format_func=lambda v: f"{v // 1_000_000} M")
+                                 value=100_000_000, key=f"{key}_it", format_func=lambda v: f"{v // 1_000_000} M",
+                                 disabled=kind == "io")
+        st.caption("Not used by dd." if kind == "io" else
+                   "How much work T2's loop does (argv[2]). Like *T2 — Calculation Workload* in the simulator, "
+                   "but in real loop steps: more iterations → more user CPU time.")
     with c3:
         try:
             cpus = sorted(os.sched_getaffinity(0))
         except Exception:
             cpus = [0]
         pin = st.toggle(f"Pin to one CPU (like taskset -c {cpus[0]})", key=f"{key}_pin")
-        st.caption(f"This server lets us use {len(cpus)} CPU(s).")
-    kind = REAL_WORKLOADS[wl]
+        st.caption(f"Restricts the program to one CPU, like *1 core* in the simulator: T1 and T2 must share it "
+                   f"(concurrency without parallelism). Off = the OS may use any of the {len(cpus)} CPU(s) this server gives us.")
     if kind == "io":
         shown = "dd if=/dev/zero of=/tmp/osx_io.bin bs=1M count=32 oflag=sync"
+        args = ("`if=/dev/zero` read zeros · `of=` the file to write · `bs=1M count=32` 32 blocks of 1 MB = 32 MB · "
+                "`oflag=sync` wait until each block is really on the disk, so the process blocks on every write")
     else:
         shown = f"./thread_demo {3 if kind == 'mixed' else 0} {iters}"
+        args = (f"argv[1] = **{3 if kind == 'mixed' else 0}**: T1's sleep in seconds (0 = no sleep) · "
+                f"argv[2] = **{iters:,}**: T2's loop iterations")
     st.code(("taskset -c %d " % cpus[0] if pin else "") + "/usr/bin/time -v " + shown, language="bash")
+    st.caption(("`taskset -c N` run on CPU N only · " if pin else "") +
+               "`/usr/bin/time -v` run the program and print the kernel's counters for it · " + args)
     hist_key = f"{key}_history"
     if st.button("▶ Run and measure on the server", type="primary", key=f"{key}_run"):
         try:
@@ -1846,9 +1864,9 @@ def render_real_measure(key):
             "Wall clock (s)": round(r["wall"], 3), "User (s)": round(r["user"], 3), "Sys (s)": round(r["sys"], 3),
             "CPU share": f"{share * 100:.0f}%", "Voluntary cs": r["vol"], "Involuntary cs": r["invol"]})
         m = st.columns(6)
-        m[0].metric("Wall clock", f"{r['wall']:.2f} s")
-        m[1].metric("User CPU", f"{r['user']:.2f} s")
-        m[2].metric("System CPU", f"{r['sys']:.2f} s")
+        m[0].metric("Wall clock", f"{r['wall']:.2f} s", help="real: elapsed time from start to finish, including all waiting.")
+        m[1].metric("User CPU", f"{r['user']:.2f} s", help="CPU time spent executing the program's own code (summed over its threads).")
+        m[2].metric("System CPU", f"{r['sys']:.2f} s", help="CPU time the kernel spent on the program's behalf: system calls, I/O handling, thread management.")
         m[3].metric("CPU share", f"{share * 100:.0f}%", help="(user + sys) / wall clock")
         m[4].metric("Voluntary cs", r["vol"], help="The process blocked and gave up the CPU (sleep, I/O, join).")
         m[5].metric("Involuntary cs", r["invol"], help="The scheduler preempted the process.")
@@ -1864,6 +1882,21 @@ def render_real_measure(key):
             st.code(r["out"].strip() or "(no output)", language="text")
         elif r["err"].strip():
             st.code(r["err"].strip().splitlines()[-1], language="text")
+    with st.expander("How to read the results", expanded=False):
+        st.markdown("""
+| Counter | Meaning | Simulator equivalent |
+| --- | --- | --- |
+| Wall clock (real) | Elapsed time, including waiting | Total simulation (ticks) |
+| User + Sys | CPU time actually used | RUNNING ticks |
+| CPU share = (user + sys) / wall | How much of the time the program computed | — |
+| Voluntary context switches | The process gave up the CPU itself: sleep, I/O, join | RUNNING → BLOCKED |
+| Involuntary context switches | The scheduler took the CPU away | RUNNING → READY (time slice over) |
+
+**Rule of thumb:** real ≈ user + sys → CPU-bound. real ≫ user + sys → the program waits; find out where (I/O, a lock, sleep or the run queue).
+With several threads user + sys can be *larger* than real, because threads run on several CPUs at once.
+
+Reference (this server, 18 Oct 2026): thread_demo 3.00 s wall, 0.13 s CPU, 4–5% · without sleep 0.15 s wall, 88% · dd 0.16 s wall, 27%, 327 voluntary.
+""")
     if st.session_state.get(hist_key):
         st.markdown("**Your runs**")
         st.dataframe(pd.DataFrame(st.session_state[hist_key]), hide_index=True, width="stretch")
