@@ -1250,7 +1250,7 @@ def thread_events(lanes, core_lanes, sleep, work):
                     cause = {"BLOCKED": f"{_tname(p)} blocked, so core {c} became free",
                              "BLOCKED (join)": f"{_tname(p)} started waiting in pthread_join(), so core {c} became free",
                              "DONE": f"{_tname(p)} finished, so core {c} became free",
-                             "READY": f"{_tname(p)}'s {QUANTUM}-tick quantum ended; the scheduler picked {_tname(n)}"}.get(ps, f"core {c} was free")
+                             "READY": f"{_tname(p)}'s {QUANTUM}-tick time slice ended; the scheduler picked {_tname(n)}"}.get(ps, f"core {c} was free")
                 if n == "main":
                     why = "Main creates T1 and T2 (pthread_create)" if run_seen == 0 else "pthread_join() completed; main continues and exits"
                 elif n == "T1":
@@ -1271,7 +1271,7 @@ def thread_events(lanes, core_lanes, sleep, work):
                 elif prev == "BLOCKED":
                     why = f"Wait finished, but no core is free ({busy} on the CPU) — READY is not RUNNING"
                 elif prev == "RUNNING":
-                    why = f"Used its {QUANTUM}-tick quantum while another thread was READY → preempted"
+                    why = f"Used its {QUANTUM}-tick time slice while another thread was READY → preempted"
                 elif prev == "BLOCKED (join)":
                     why = f"T1 and T2 are done; main is runnable but waits for a core ({busy})"
             elif state == "BLOCKED":
@@ -1305,7 +1305,7 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
                        help="The for-loop in calculator(): pure CPU work.")
         st.caption("Total CPU work = 1 tick start + calculation + 1 tick finish")
     with c4:
-        st.markdown(f"<div style='font-size:.9rem;font-weight:600;margin-bottom:6px'>Round Robin — Quantum = {QUANTUM}</div>"
+        st.markdown(f"<div style='font-size:.9rem;font-weight:600;margin-bottom:6px'>Time slice = {QUANTUM} ticks</div>"
                     f"<div style='border:1px solid #CBD5E1;border-radius:8px;padding:6px 10px;font-weight:700'>{QUANTUM} ticks (fixed)</div>",
                     unsafe_allow_html=True)
         st.caption(f"A thread may run for at most {QUANTUM} ticks before a scheduling decision")
@@ -1328,7 +1328,7 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
     preempts = [(tk, r) for tk, c, r, kind in slices if kind == "preempted"]
 
     # ---- scenario summary
-    st.markdown(f"**Current Scenario — {nc} Core{'s' if nc > 1 else ''}, Quantum {QUANTUM}**")
+    st.markdown(f"**Current Scenario — {nc} Core{'s' if nc > 1 else ''}, time slice {QUANTUM} ticks**")
     s1, s2, s3, s4 = st.columns(4)
     s1.metric("T1 blocked time", f"{sl} ticks")
     s2.metric("T2 CPU time", f"{wk + 2} ticks")
@@ -1345,7 +1345,7 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
         else:
             st.success(f"**t = {wake}** → T1 wakes up and a core is free: it runs immediately (no READY wait).")
     for tk, r in preempts:
-        st.warning(f"**t = {tk}** → {_tname(r)}'s {QUANTUM}-tick quantum ends; "
+        st.warning(f"**t = {tk}** → {_tname(r)}'s {QUANTUM}-tick time slice ends; "
                    f"{', '.join(_tname(x) for cl in core_lanes for x in [cl[tk]] if x not in ('idle', r))} gets the CPU.")
 
     # ---- timeline with hover explanations
@@ -1392,9 +1392,9 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
                     "<th style='padding:4px 8px;text-align:left'>Time</th><th style='text-align:left'>Thread</th>"
                     "<th style='text-align:left'>State</th><th style='text-align:left'>Why?</th></tr>" + trs + "</table>",
                     unsafe_allow_html=True)
-        st.caption("Highlighted rows = key moments (T1 wakes up, a quantum ends).")
+        st.caption("Highlighted rows = key moments (T1 wakes up, a time slice ends).")
 
-    with st.expander(f"Tick by tick: every tick numbered, with the {QUANTUM}-tick quantum marked", expanded=False):
+    with st.expander(f"Tick by tick: every tick numbered, with the {QUANTUM}-tick time slice marked", expanded=False):
         abbr = {"RUNNING": "RUN", "READY": "RDY", "BLOCKED": "BLK", "BLOCKED (join)": "JOIN", "DONE": "·", "—": ""}
         rows = {_tname(n): [abbr[x] for x in l] for n, l in lanes.items()}
         for c, l in enumerate(core_lanes):
@@ -1405,7 +1405,7 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
             for i in range(total):
                 if seq[i] == "READY":
                     prev = seq[i - 1] if i > 0 else "—"
-                    reason = {"—": "new, waits in queue", "BLOCKED": "wait over (woke up)", "RUNNING": "preempted (quantum over)"}.get(prev)
+                    reason = {"—": "new, waits in queue", "BLOCKED": "wait over (woke up)", "RUNNING": "preempted (time slice over)"}.get(prev)
                     if reason:
                         why[i] = (why[i] + " · " if why[i] else "") + f"{n} {reason}"
         rows["Why READY?"] = why
@@ -1413,16 +1413,16 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
         for tk, c, r, kind in slices:
             who = "T0" if r == "main" else r
             marks[tk] = (marks[tk] + " " if marks[tk] else "") + (f"⏱ {who} out" if kind == "preempted" else f"⏱ {who} stays")
-        rows[f"Quantum ({QUANTUM})"] = marks
+        rows[f"Time slice ({QUANTUM})"] = marks
         grid = pd.DataFrame(rows, index=[str(i) for i in range(total)]).T
         gcol = {"RUN": "#BBF7D0", "RDY": "#FEF08A", "BLK": "#BFDBFE", "JOIN": "#E9D5FF"}
         st.dataframe(grid.style.map(lambda v: f"background-color: {gcol.get(v, '')}" if v in gcol else ""), width="stretch")
         if slices:
-            st.caption("⏱ out = the quantum ended and another thread was READY, so the OS preempted this one. "
-                       "⏱ stays = the quantum ended but nobody else was waiting for that core, so the same thread kept the CPU.")
+            st.caption("⏱ out = the time slice ended and another thread was READY, so the OS preempted this one. "
+                       "⏱ stays = the time slice ended but nobody else was waiting for that core, so the same thread kept the CPU.")
         else:
-            st.caption(f"No thread used a full {QUANTUM}-tick quantum in this run.")
-    with st.expander(f"What exactly does the scheduler do with Quantum = {QUANTUM}?", expanded=False):
+            st.caption(f"No thread used a full {QUANTUM}-tick time slice in this run.")
+    with st.expander(f"What exactly does the scheduler do with a time slice of {QUANTUM} ticks?", expanded=False):
         st.markdown(f"""
 1. When a core is free, the scheduler takes the thread at the **head of the ready queue** and runs it.
 2. It counts the ticks the thread runs. After **{QUANTUM} ticks** it makes a **scheduling decision**:
@@ -1430,15 +1430,17 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
    if nobody is waiting, the same thread simply continues.
 3. A thread also gives up the core earlier if it **blocks** (sleep, I/O, join) or **finishes**.
 
-**The quantum limits one scheduling turn, not the total work a thread can do:** T2 needs {wk + 2} ticks of CPU and gets them in turns of at most {QUANTUM}.
-A woken thread becomes READY; *when* it runs depends on the ready-queue order and on this decision, not on the quantum alone.
+**The time slice limits one scheduling turn, not the total work a thread can do:** T2 needs {wk + 2} ticks of CPU and gets them in turns of at most {QUANTUM}.
+A woken thread becomes READY; *when* it runs depends on the ready-queue order and on this decision, not on the time slice alone.
+
+*Later in the course this policy gets its name, Round Robin, and the time slice is called the quantum (LM 14, Demo 4).*
 """)
     with st.expander("Who decides each parameter?", expanded=False):
         st.markdown("""
 | Parameter | Who decides? | What it really means |
 | --- | --- | --- |
 | Number of CPU cores | Hardware, and the OS's allocation | How many threads can execute at the same instant |
-| Quantum (4 ticks) | **OS** scheduler policy | How long a thread may keep the CPU before the OS can switch |
+| Time slice (4 ticks) | **OS** scheduler policy | How long a thread may keep the CPU before the OS can switch |
 | T1 blocking wait | **Application** developer: `sleep(3)` | Requested wait; when T1 runs again still depends on the scheduler |
 | T2 calculation workload | **Application**'s workload: the loop | Amount of work; how long it takes depends on CPU, load and policy |
 | Thread priority | Application **requests**, OS **decides** | e.g. `nice`, `pthread_setschedparam` |
@@ -1468,7 +1470,7 @@ A woken thread becomes READY; *when* it runs depends on the ready-queue order an
 <li>Blocking one thread does not necessarily block the whole process.</li>
 <li>CPU time is different from elapsed time.</li>
 <li>A completed wait makes a thread READY, not automatically RUNNING.</li>
-<li>Quantum limits a scheduling turn, not the total work a thread can perform.</li></ul></div>
+<li>A time slice limits a scheduling turn, not the total work a thread can perform.</li></ul></div>
 """, unsafe_allow_html=True)
 
 
@@ -1650,16 +1652,16 @@ Careful: while devices work, the CPU may still run **interrupt handlers and driv
                 "Tek çekirdekte T1 uyandığında T2 çalışıyorsa T1 1 tık READY bekliyor. İki çekirdekte hiç beklemiyor.",
                 "Hesap süresini 1'e indirin ya da uykuyu 8'e çıkarın: 'Finished' satırlarının sırası değişiyor. Sıra garanti değil.",
                 "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin.",
-                "Kontrolde 'Round Robin — Quantum = 4' yazıyor. Burada yalnızca şunu söyleyin: 'bir thread en fazla 4 tick çalışır, sonra scheduler karar verir'. Algoritmanın ayrıntısını LM 14'teki preemption demosunda ve Demo 4'te (LM 18) işleyin; ikisinde de bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri quantum'un dolduğu anları gösterir.",
-                "Anlatım sırası: 1) 1 çekirdek, bekleme 3, hesap 6, quantum 4. 2) T2 CPU Time Calculator: 6 hesap + 2 printf = 8 tick. 3) T1'in 2–5 arası BLOCKED olduğunu gösterin. 4) Sorun: T1 t=5'te READY, neden RUNNING değil? 5) t=6'da T2'nin quantum'u doluyor, T1 seçiliyor (turuncu çerçeveli bloklar, 'Why did this happen?' tablosu). 6) Çekirdeği 2 yapın: aynı thread'ler farklı çekirdeklerde, toplam 12 → 10 tick, kullanım %100 → %60. 7) Bekleme süresini artırın ve toplam süreye etkisini karşılaştırın.",
+                "Round Robin'i henüz anlatmadık; kontrolde genel isim var: 'Time slice = 4 ticks'. Sezgisel söyleyin: 'bir thread en fazla 4 tick çalışır, sonra scheduler karar verir'. Round Robin ve quantum adlarını LM 14'teki preemption demosunda koyup Demo 4'te (LM 18) ayrıntılandırın; ikisinde de bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri dilimin dolduğu anları gösterir.",
+                "Anlatım sırası: 1) 1 çekirdek, bekleme 3, hesap 6, zaman dilimi 4. 2) T2 CPU Time Calculator: 6 hesap + 2 printf = 8 tick. 3) T1'in 2–5 arası BLOCKED olduğunu gösterin. 4) Sorun: T1 t=5'te READY, neden RUNNING değil? 5) t=6'da T2'nin zaman dilimi doluyor, T1 seçiliyor (turuncu çerçeveli bloklar, 'Why did this happen?' tablosu). 6) Çekirdeği 2 yapın: aynı thread'ler farklı çekirdeklerde, toplam 12 → 10 tick, kullanım %100 → %60. 7) Bekleme süresini artırın ve toplam süreye etkisini karşılaştırın.",
                 "Zaman çizelgesindeki bir bloğun üzerine gelince 'neden?' açıklaması çıkıyor. Öğrencilere renkleri ezberletmeyin; her geçişte scheduler'ın hangi kararı verdiğini sordurun."],
         "say_en": ["If time allows, measure it (preview of Week 11): with /usr/bin/time -v, real is about 3 s and user much smaller; voluntary context switches count blocking, involuntary ones count preemption. Numbers vary by machine; let students record their own.",
                    "Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
                    "On one core, if T2 is running when T1 wakes, T1 waits 1 tick in READY. On two cores it does not wait at all.",
                    "Set the calculation to 1 or the sleep to 8: the order of the 'Finished' lines changes. The order is not guaranteed.",
                    "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU.",
-                   "The control reads 'Round Robin — Quantum = 4'. Here only say: 'a thread runs for at most 4 ticks, then the scheduler decides'. Work out the algorithm in the preemption demo on LM 14 and in Demo 4 (LM 18), and come back to this demo both times. The ⏱ marks in the tick table show when a quantum ended.",
-                   "Teaching order: 1) 1 core, wait 3, calculation 6, quantum 4. 2) T2 CPU Time Calculator: 6 calculation + 2 printf = 8 ticks. 3) Show T1 BLOCKED from 2 to 5. 4) Ask: T1 is READY at t=5, why not RUNNING? 5) At t=6 T2's quantum ends and T1 is picked (orange-outlined blocks, 'Why did this happen?' table). 6) Set 2 cores: the same threads on different cores, total 12 → 10 ticks, utilization 100% → 60%. 7) Increase the wait and compare its effect on the total time.",
+                   "We have not taught Round Robin yet; the control uses the general name 'Time slice = 4 ticks'. Say it intuitively: 'a thread runs for at most 4 ticks, then the scheduler decides'. Name Round Robin and the quantum in the preemption demo on LM 14, work it out in Demo 4 (LM 18), and come back to this demo both times. The ⏱ marks in the tick table show when a slice ended.",
+                   "Teaching order: 1) 1 core, wait 3, calculation 6, time slice 4. 2) T2 CPU Time Calculator: 6 calculation + 2 printf = 8 ticks. 3) Show T1 BLOCKED from 2 to 5. 4) Ask: T1 is READY at t=5, why not RUNNING? 5) At t=6 T2's time slice ends and T1 is picked (orange-outlined blocks, 'Why did this happen?' table). 6) Set 2 cores: the same threads on different cores, total 12 → 10 ticks, utilization 100% → 60%. 7) Increase the wait and compare its effect on the total time.",
                    "Hovering over a timeline block shows why it happened. Do not let students memorize colors; ask which scheduler decision each change reflects."],
         "qa": [("T1 bloke iken T2 çalışabilir mi?",
                 "Evet. Varsayılan ayarlarda T2, T1'in uyuduğu 3 tıkın hepsinde çalışıyor.",
@@ -1690,9 +1692,9 @@ Careful: while devices work, the CPU may still run **interrupt handlers and driv
                 "T2's calculation is set to 6, but T2 is RUNNING for 8 ticks. Why?",
                 "T2 prints once before and once after the loop, and the simulator counts each printf as 1 tick of CPU: 1 + 6 + 1 = 8. Likewise T1 runs 1 tick before and 1 tick after its sleep."),
                ("T1 3 tick bloke kalıyor ama neden t=6'da, yani bloke olduktan 4 tick sonra tekrar çalışıyor?",
-                "T1 t=2–5 arası BLOCKED (3 tick). t=5'te bekleme bitiyor ve T1 READY oluyor, ama çekirdekte T2 var. T2'nin 4 tick'lik quantum'u t=6'da doluyor ve scheduler T1'i seçiyor. Yani 3 tick bekleme + 1 tick READY. İki çekirdekte boş çekirdek olduğu için READY beklemesi 0.",
+                "T1 t=2–5 arası BLOCKED (3 tick). t=5'te bekleme bitiyor ve T1 READY oluyor, ama çekirdekte T2 var. T2'nin 4 tick'lik zaman dilimi t=6'da doluyor ve scheduler T1'i seçiyor. Yani 3 tick bekleme + 1 tick READY. İki çekirdekte boş çekirdek olduğu için READY beklemesi 0.",
                 "T1 is blocked for 3 ticks, so why does it run again only at t=6, 4 ticks after blocking?",
-                "T1 is BLOCKED from t=2 to 5 (3 ticks). At t=5 the wait ends and T1 becomes READY, but T2 is on the core. T2's 4-tick quantum ends at t=6 and the scheduler picks T1. So 3 ticks of waiting + 1 tick READY. With 2 cores a core is free, so the READY wait is 0."),
+                "T1 is BLOCKED from t=2 to 5 (3 ticks). At t=5 the wait ends and T1 becomes READY, but T2 is on the core. T2's 4-tick time slice ends at t=6 and the scheduler picks T1. So 3 ticks of waiting + 1 tick READY. With 2 cores a core is free, so the READY wait is 0."),
                ("Çekirdek 2 olunca CPU kullanımı neden %100'den %60'a düşüyor?",
                 "Kullanım = kullanılan çekirdek-tick ÷ kullanılabilir çekirdek-tick. Tek çekirdekte 12 tick'in hepsi dolu (12/12). İki çekirdekte program 10 tick'te bitiyor ama 20 çekirdek-tick'in yalnızca 12'si dolu: bir çekirdek çoğu zaman boş. Program hızlandı, ama donanımın tamamı kullanılmadı.",
                 "With 2 cores, why does CPU utilization drop from 100% to 60%?",
