@@ -4,7 +4,7 @@
   "title": "Process states",
   "slides": "10, 18-20, 31-32",
   "board": 1,
-  "boards": 2,
+  "boards": 3,
   "img": "V01_1.jpg",
   "caps": [
    "Üç durumu çizin: READY, RUNNING, WAITING. Her biri bir soru: CPU'yu kullanıyor mu, kullanabilir mi?",
@@ -28,17 +28,39 @@
   "title": "Process states",
   "slides": "10, 18-20, 31-32",
   "board": 2,
-  "boards": 2,
+  "boards": 3,
   "img": "V01_2.jpg",
   "caps": [
    "Şimdi Demo 1'in sonucunu tahtaya yazın: P0 bir I/O yapıyor, P1 dört birim CPU kullanıyor.",
    "Zaman 2–5: P0 BLOCKED ama CPU satırında 1 var. CPU boşta değil, P1'i çalıştırıyor.",
-   "Sonuç: SWITCH_ON_IO ile 7 birim, SWITCH_ON_END ile 11 birim. Aynı işler, farklı karar, farklı süre."
+   "Run A sonucu: toplam 7 birim, CPU %85,7. I/O beklemesi ile P1'in işi örtüştü."
   ],
   "caps_en": [
    "Now write the result of Demo 1 on the board: P0 does one I/O, P1 uses four units of CPU.",
    "Time 2–5: P0 is BLOCKED, but the CPU row shows 1. The CPU is not idle; it runs P1.",
-   "Result: 7 units with SWITCH_ON_IO, 11 units with SWITCH_ON_END. Same jobs, different decision, different time."
+   "Result of Run A: 7 units in total, CPU 85.7%. The I/O wait and P1's work overlapped."
+  ]
+ },
+ {
+  "code": "V01",
+  "title": "Process states",
+  "slides": "10, 18-20, 31-32",
+  "board": 3,
+  "boards": 3,
+  "img": "V01_3.jpg",
+  "caps": [
+   "Şimdi Run B: yalnızca switch behavior'u SWITCH_ON_END yapın. İşler aynı.",
+   "Zaman 1: P0 I/O başlatıyor ve BLOCKED oluyor.",
+   "Zaman 2–6: P0 BLOCKED, P1 READY ama çalıştırılmıyor. CPU satırı boş: CPU boşta bekliyor.",
+   "Zaman 7: I/O bitti, P0 son adımını yapıyor. Ancak şimdi P1 çalışabiliyor: zaman 8–11.",
+   "Sonuç: aynı iş 7 yerine 11 birim sürdü; CPU kullanımı %85,7'den %54,5'e düştü."
+  ],
+  "caps_en": [
+   "Now Run B: change only the switch behavior to SWITCH_ON_END. The jobs are the same.",
+   "Time 1: P0 starts its I/O and becomes BLOCKED.",
+   "Times 2–6: P0 is BLOCKED and P1 is READY but not run. The CPU row is empty: the CPU sits idle.",
+   "Time 7: the I/O is done and P0 runs its last step. Only now can P1 run: times 8–11.",
+   "Result: the same work took 11 units instead of 7; CPU utilization fell from 85.7% to 54.5%."
   ]
  },
  {

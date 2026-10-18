@@ -856,12 +856,13 @@ SLIDES = [
         """,
         "layers": ["run"],
         "demo": "process",
-        "board": ["V01_2"],
+        "board": ["V01_2", "V01_3"],
         "say": ["Run A: zaman 2–5 arası P0 BLOCKED, ama CPU sütununda 1 var. CPU boş değil, P1'i çalıştırıyor.",
                 "Run B: yalnız switch behavior'u değiştirin. Toplam süre 7'den 11'e çıkar."],
     },
     {
         "kicker": "Slide 7 · Demo 1 · Layer 4",
+        "board": ["V01_2", "V01_3"],
         "title": "Same work, different switch decision",
         "body": """
         <table style='width:100%;border-collapse:collapse;font-size:1.05rem'>
