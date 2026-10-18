@@ -402,6 +402,8 @@ GLOSSARY = {
     "Blocking call": ("Blocking call", "A call such as read() or sleep() that can make the thread wait (BLOCKED) without using the CPU."),
     "pthread_join": ("pthread_join()", "Makes the calling thread wait (BLOCKED) until the given thread has finished."),
     "Mutex": ("Mutual exclusion lock", "Only one thread at a time may hold it; others trying to lock it wait (WAITING)."),
+    "Spinlock": ("Spinlock", "A lock whose waiters keep RUNNING in a loop, re-checking until it is free: no sleep, but it burns CPU."),
+    "Semaphore": ("Semaphore", "A counter of permits: wait() takes one or sleeps (BLOCKED) if none is left; post() returns one and wakes a waiter."),
     "Transaction": ("Database transaction", "A group of reads and writes that the database applies atomically and in isolation (all or nothing)."),
     "Lost update": ("Lost update", "Two read-modify-write sequences overlap and one write overwrites the other."),
     "Real-time": ("Real-time scheduling", "Correctness depends on finishing before a deadline, not only on the result."),
@@ -703,7 +705,11 @@ SAY_EN = {
     11: ["The code is correct on its own. The problem appears when the steps of two threads interleave, even on one core."],
     12: ["The program is three instructions: read, add, write. If the interrupt lands between them, an update is lost.",
          "The code never changed, only the interrupt timing. A program that relies on timing for correctness is broken."],
-    13: ["On Linux a thread waiting for a lock is put to sleep with a futex. Scheduling ≠ synchronization."],
+    13: ["On Linux a thread waiting for a lock is put to sleep with a futex. Scheduling ≠ synchronization.",
+         "The collapsible section is a Week 5 recap: do not reteach the five tools, only ask 'what state is the waiting thread in, does it use the CPU?'. Mutex, semaphore and condition variable make the waiter BLOCKED; a spinlock leaves it RUNNING; an atomic operation never waits.",
+         "Live demo: first 1 core, critical section 4. In the spinlock row T2 is SPINNING for 3 ticks: the lock holder T1 cannot get the CPU, so the lock cannot be released. With the mutex T2 sleeps and T1 finishes: total 15 → 13 ticks.",
+         "Then 2 cores: spinlock 9, mutex 10 ticks. The lock holder keeps running on the other core, so spinning for a short wait is cheaper than sleeping and waking up. Conclusion: spinlock for short critical sections on multicore (inside the kernel), mutex for long or unknown waits.",
+         "Set the critical section to 1: nobody waits and both locks behave the same. The difference appears only under contention."],
     14: ["Link back: in the thread demo (LM 9) we said 'the OS gives each thread a time slice of at most 4 ticks'. That policy is Round Robin and the slice is the quantum; here the quantum is 2.",
          "FCFS: P2 arrived at time 3 but waits until P1 finishes.",
          "RR q=2: at time 2 P2 has not arrived yet, so P1 continues; at time 4 it is P2's turn."],
@@ -804,7 +810,23 @@ QA = {
          ("Kilit bekleyen thread CPU kullanır mı?",
           "Blocking mutex'te hayır: WAITING durumuna geçer ve uyur. Spinlock'ta ise döngüde CPU harcar.",
           "Does a thread waiting for a lock use the CPU?",
-          "With a blocking mutex, no: it goes to WAITING and sleeps. With a spinlock it burns CPU in a loop.")],
+          "With a blocking mutex, no: it goes to WAITING and sleeps. With a spinlock it burns CPU in a loop."),
+         ("Tek çekirdekte spinlock neden kötü?",
+          "Dönen thread RUNNING olduğu için çekirdeği tutuyor; kilidi tutan thread çalışamıyor ve kilidi açamıyor. Dönme ancak dönen thread'in zaman dilimi dolunca bitiyor. Demoda 3 tick boşa gidiyor (15 vs 13).",
+          "Why is a spinlock bad on a single core?",
+          "The spinning thread is RUNNING, so it holds the core; the lock holder cannot run and cannot release the lock. The spinning only ends when the spinner's time slice runs out. In the demo 3 ticks are wasted (15 vs 13)."),
+         ("O zaman spinlock neden var?",
+          "Çok çekirdekte kilit sahibi başka çekirdekte çalışmaya devam eder; kritik bölüm kısaysa birkaç tick dönmek, uyuyup uyanmanın (system call + iki context switch) maliyetinden ucuzdur. Kernel içindeki kısa kritik bölümler bu yüzden spinlock kullanır. Gerçek mutex'ler de çoğu zaman önce kısa süre döner, sonra uyur.",
+          "Then why do spinlocks exist?",
+          "On multicore the lock holder keeps running on another core; if the critical section is short, spinning for a few ticks is cheaper than sleeping and waking up (system call + two context switches). Short critical sections inside the kernel use spinlocks for this reason. Real mutexes often spin briefly first, then sleep."),
+         ("Semaphore ve condition variable'da bekleyen thread hangi durumda?",
+          "BLOCKED. sem_wait() izin yoksa, pthread_cond_wait() koşul sağlanana kadar thread'i uyutur; hazır kuyruğunda değildir, CPU kullanmaz. Condition variable beklerken mutex'i de bırakır, uyanınca yeniden alır.",
+          "In which state is a thread waiting on a semaphore or a condition variable?",
+          "BLOCKED. sem_wait() without a permit and pthread_cond_wait() until the condition holds put the thread to sleep; it is not in the ready queue and uses no CPU. A condition variable also releases the mutex while waiting and re-acquires it on wake-up."),
+         ("Atomic işlemler kilidin yerini tutar mı?",
+          "Tek bir değişkeni tek adımda güncellemek için evet (atomic counter++, compare-and-swap); hiç beklemezler. Birden çok değişkeni birlikte tutarlı tutmak gerektiğinde kilit gerekir. Kilitler de içeride atomic komutlarla yapılır.",
+          "Can atomic operations replace a lock?",
+          "For updating one variable in one step, yes (atomic counter++, compare-and-swap); they never wait. When several variables must stay consistent together you need a lock. Locks themselves are built from atomic instructions.")],
     14: [("P2 zaman 3'te gelince OS P1'i keser mi?",
           "FCFS: hayır, P2 7 ms bekler. RR q=2: dilim dolunca, zaman 4'te sıra P2'ye geçer, 1 ms bekler. SRTF: hemen keser, P2 hiç beklemez.",
           "When P2 arrives at time 3, does the OS interrupt P1?",
@@ -1039,16 +1061,34 @@ SLIDES = [
     },
     {
         "kicker": "Slide 13 · Demo 2 · The fix",
-        "terms": ["Mutex"],
+        "terms": ["Mutex", "Spinlock", "Semaphore", "Condition variable", "Atomic"],
         "title": "The fix lives in the application: a mutex",
         "body": """
         The OS puts a thread that cannot get the lock into <b>WAITING</b> and wakes it on unlock.
         <b>Preemption does not release a mutex</b>: a preempted lock holder keeps it, so the result is always 7.
         """,
         "flow": "Scheduler: WHO runs now?   ·   Mutex: WHO may touch the shared data?",
+        "sections": [("The five tools from Week 5 — seen by the scheduler", """
+| Mechanism | What it is for | If the lock / condition is not available, the thread is… | Uses CPU while waiting? |
+| --- | --- | --- | --- |
+| **Mutex** | One thread at a time in a critical section | **BLOCKED** (sleeps; woken on unlock) | No |
+| **Spinlock** | Same protection, very short critical sections | **RUNNING**, re-checking the lock in a loop | **Yes** |
+| **Semaphore** | Up to *N* permits (e.g. 3 workers on a resource) | **BLOCKED** in `wait()` when no permit is left | No |
+| **Condition variable** | Wait until a condition becomes true (queue not empty) | **BLOCKED** in `wait()`, releasing its mutex | No |
+| **Atomic operation** | One indivisible update (`counter++`, compare-and-swap) | Does not wait: one hardware step | Only that step |
+
+**Scheduler's view:** a BLOCKED thread is not in the ready queue, so the CPU goes to other threads. A spinning thread *is* RUNNING: it occupies a core and uses its time slice without doing useful work.
+
+All five were covered in **Week 5** (atomic and CAS, mutex, spinlock, semaphore, condition variable, producer–consumer). Today we only ask: *what does each do to scheduling?* The live demo below compares the two ways of waiting: spinning vs blocking.
+""")],
         "layers": ["app", "os", "res"],
         "code": (("app", "Application code · with a mutex", APP_MUTEX), ("os", "OS kernel · pseudocode", OS_MUTEX)),
-        "say": ["Linux'ta kilit bekleyen thread futex ile uyutulur. Scheduling ≠ synchronization."],
+        "demo": "spin_vs_mutex",
+        "say": ["Linux'ta kilit bekleyen thread futex ile uyutulur. Scheduling ≠ synchronization.",
+                "Açılır bölüm Week 5'in tekrarı: beş aracı yeniden öğretmeyin, yalnızca 'bekleyen thread hangi durumda, CPU harcıyor mu?' sorusunu sorun. Mutex, semaphore ve condition variable bekleyeni BLOCKED yapar; spinlock RUNNING bırakır; atomic işlem hiç beklemez.",
+                "Canlı demo: önce 1 çekirdek, kritik bölüm 4. Spinlock satırında T2 3 tick SPINNING: kilidi tutan T1 CPU'yu alamadığı için kilit açılamıyor. Mutex'te T2 uyuyor ve T1 işini bitiriyor: toplam 15 → 13 tick.",
+                "Sonra 2 çekirdek: spinlock 9, mutex 10 tick. Kilit sahibi diğer çekirdekte çalışmaya devam ettiği için kısa beklemede dönmek, uyuyup uyanmaktan ucuz. Sonuç: spinlock kısa kritik bölüm + çok çekirdek (kernel içi), mutex uzun ya da belirsiz bekleme.",
+                "Kritik bölümü 1 yapın: kimse beklemiyor, iki kilit de aynı. Fark yalnızca çakışma (contention) olduğunda ortaya çıkıyor."],
     },
     {
         "kicker": "Slide 14 · Preemption · all four layers",
@@ -2003,12 +2043,159 @@ Reference (this server, 18 Oct 2026): thread_demo 3.00 s wall, 0.13 s CPU, 4–5
             st.rerun()
 
 
+# ---------------------------------------------------------------------------
+# Spinlock vs mutex: the same two threads, two ways of waiting for a lock
+# ---------------------------------------------------------------------------
+LOCK_COLORS = {"RUNNING": "#BBF7D0", "IN CS": "#4ADE80", "SPINNING": "#FCA5A5", "READY": "#FEF08A",
+               "BLOCKED": "#BFDBFE", "DONE": "#F1F5F9", "—": "#FFFFFF"}
+
+
+def lock_simulate(kind="mutex", cores=1, cs=4, slice_=4):
+    """T1 and T2 each run 1 tick of normal work, lock, cs ticks in the critical section, unlock, 1 tick of normal work.
+    kind 'spin': a waiting thread stays RUNNING and burns its ticks re-checking the lock.
+    kind 'mutex': a waiting thread blocks and is woken (READY) when the lock is released."""
+    progs = {n: [("cpu", 1), ("lock", 0), ("cs", cs), ("unlock", 0), ("cpu", 1)] for n in ("T1", "T2")}
+    th = {n: {"pc": 0, "left": 1, "state": "READY"} for n in progs}
+    queue, running, used = ["T1", "T2"], [None] * cores, [0] * cores
+    owner, waiters = None, []
+    lanes = {n: [] for n in progs}
+    core_lanes = [[] for _ in range(cores)]
+    events, t, sleeps = [], 0, 0
+
+    def free(n):
+        for c in range(cores):
+            if running[c] == n:
+                running[c] = None
+
+    def advance(n):
+        nonlocal owner
+        s = th[n]
+        s["pc"] += 1
+        while s["pc"] < len(progs[n]) and progs[n][s["pc"]][0] == "unlock":
+            owner = None
+            events.append((t + 1, f"{n} unlocks"))
+            if kind == "mutex" and waiters:
+                w = waiters.pop(0)
+                th[w]["state"] = "READY"; queue.append(w)
+                events.append((t + 1, f"{w} woken up → READY"))
+            s["pc"] += 1
+        if s["pc"] >= len(progs[n]):
+            s["state"] = "DONE"; free(n); events.append((t + 1, f"{n} finishes")); return
+        s["left"] = progs[n][s["pc"]][1]
+
+    while any(s["state"] != "DONE" for s in th.values()) and t < 100:
+        for c in range(cores):
+            r = running[c]
+            if r is not None and used[c] >= slice_ and queue and all(running[x] is not None for x in range(cores)):
+                th[r]["state"] = "READY"; queue.append(r); running[c] = None
+                events.append((t, f"{r}'s time slice ends → READY" + (" (still holds the lock)" if owner == r else "")))
+        for c in range(cores):
+            if running[c] is None and queue:
+                r = queue.pop(0); running[c] = r; used[c] = 0; th[r]["state"] = "RUNNING"
+        label = {n: th[n]["state"] for n in th}
+        for c in range(cores):
+            r = running[c]
+            if r is None:
+                continue
+            s = th[r]
+            op = progs[r][s["pc"]][0]
+            used[c] += 1
+            if op == "lock":
+                if owner is None:
+                    owner = r; events.append((t, f"{r} gets the lock"))
+                    s["pc"] += 1; s["left"] = progs[r][s["pc"]][1]; op = "cs"
+                elif kind == "spin":
+                    label[r] = "SPINNING"
+                    if not events or events[-1][1] != f"{r} spins (lock held by {owner})":
+                        events.append((t, f"{r} spins (lock held by {owner})"))
+                    continue
+                else:
+                    label[r] = "RUNNING"; sleeps += 1
+                    s["state"] = "BLOCKED"; waiters.append(r); running[c] = None
+                    events.append((t, f"{r} finds the lock taken → BLOCKED (sleeps)"))
+                    continue
+            label[r] = "IN CS" if op == "cs" else "RUNNING"
+            s["left"] -= 1
+            if s["left"] == 0:
+                advance(r)
+        for n in th:
+            lanes[n].append(label[n])
+        for c in range(cores):
+            core_lanes[c].append(running[c] or "idle")
+        t += 1
+    # the core lane shows who used the core during the tick (a thread that blocked this tick still used it)
+    for c in range(cores):
+        for i in range(t):
+            for n in th:
+                if lanes[n][i] in ("RUNNING", "IN CS", "SPINNING") and core_lanes[c][i] == "idle" and \
+                        all(core_lanes[o][i] != n for o in range(cores)):
+                    core_lanes[c][i] = n
+    spin = sum(1 for n in lanes for x in lanes[n] if x == "SPINNING")
+    busy = sum(1 for cl in core_lanes for x in cl if x != "idle")
+    return {"lanes": lanes, "core_lanes": core_lanes, "events": events, "total": t, "spin": spin,
+            "sleeps": sleeps, "busy": busy, "useful": busy - spin - sleeps}
+
+
+def render_spin_vs_mutex_demo(key, cores=1, cs=4):
+    c1, c2 = st.columns(2)
+    with c1:
+        nc = st.radio("Number of CPU Cores", [1, 2], index=[1, 2].index(cores), horizontal=True, key=f"{key}_cores")
+        st.caption("1 = the two threads take turns · 2 = they can run at the same time")
+    with c2:
+        k = st.slider("T1 — Critical Section Length", 1, 8, cs, key=f"{key}_cs",
+                      help="How many ticks T1 works while holding the lock.")
+        st.caption("Ticks T1 spends inside lock() … unlock(). T2 then needs the same lock.")
+    st.caption("Both threads: 1 tick of normal work → lock() → critical section → unlock() → 1 tick of normal work. "
+               "T2's critical section is just as long. Each thread may run for at most 4 ticks before the OS can switch "
+               "(time slice). A tick is an abstract unit of time.")
+    res = {kind: lock_simulate(kind, nc, k) for kind in ("spin", "mutex")}
+    for kind, title in (("spin", "Spinlock — the waiting thread keeps the CPU and re-checks the lock"),
+                        ("mutex", "Mutex — the waiting thread sleeps (BLOCKED) until unlock wakes it")):
+        r = res[kind]
+        st.markdown(f"**{title}**")
+        render_lanes([(n, l) for n, l in r["lanes"].items()], LOCK_COLORS)
+        render_lanes([(f"Core {c}", l) for c, l in enumerate(r["core_lanes"])], {"T1": "#E5E7EB", "T2": "#FDE68A"})
+        with st.expander("Events, tick by tick", expanded=False):
+            st.dataframe(pd.DataFrame([{"t": tk, "Event": e} for tk, e in r["events"]]), hide_index=True, width="stretch")
+    st.caption("Useful share = useful work ticks ÷ available core-ticks (cores × total time). "
+               "The mutex's sleep tick stands for the cost of blocking and waking up (system call + context switches).")
+    st.caption("IN CS = running inside the critical section (holds the lock) · SPINNING = running, but only re-checking the lock "
+               "(wasted CPU) · BLOCKED = sleeping until the lock is released (WAITING on the earlier slides), uses no CPU.")
+    s, m = res["spin"], res["mutex"]
+    cap = nc * s["total"], nc * m["total"]
+    st.dataframe(pd.DataFrame([
+        {"": "Total time", "Spinlock": f"{s['total']} ticks", "Mutex": f"{m['total']} ticks"},
+        {"": "CPU ticks wasted spinning", "Spinlock": str(s["spin"]), "Mutex": "0"},
+        {"": "CPU ticks to try the lock and go to sleep", "Spinlock": "0", "Mutex": str(m["sleeps"])},
+        {"": "Useful work ticks", "Spinlock": str(s["useful"]), "Mutex": str(m["useful"])},
+        {"": "Useful share of the CPU", "Spinlock": f"{s['useful'] / cap[0] * 100:.0f}%", "Mutex": f"{m['useful'] / cap[1] * 100:.0f}%"},
+    ]), hide_index=True, width="stretch")
+    if nc == 1 and s["spin"]:
+        st.error(f"On 1 core the spinning thread burns {s['spin']} tick(s) of CPU while the lock holder cannot run: "
+                 "the lock can only be released when the spinner loses the CPU.")
+    elif nc == 2 and s["spin"]:
+        st.info(f"On 2 cores the lock holder keeps running on the other core, so the spinner waits only {s['spin']} tick(s) "
+                "and needs no sleep / wake-up. With a short critical section spinning can be cheaper than blocking.")
+    else:
+        st.success("No thread had to wait for the lock in this run.")
+    st.markdown("""
+<div style='border-left:4px solid #0D9488;background:#F0FDFA;padding:10px 14px;border-radius:6px'>
+<b>What does this show?</b><ul style='margin:6px 0 0 0'>
+<li>Both locks protect the data equally well; they differ in <b>how a thread waits</b>.</li>
+<li>A spinning thread is <b>RUNNING</b> for the scheduler: it uses CPU time but does no useful work.</li>
+<li>A blocked thread uses <b>no CPU</b>; the price is a sleep and a wake-up (two context switches).</li>
+<li>Spinlocks suit <b>short</b> critical sections on <b>multicore</b> machines (e.g. inside the kernel); a blocking mutex suits long or unknown waits.</li>
+<li>Real mutexes often spin briefly first, then block (Week 5).</li></ul></div>
+""", unsafe_allow_html=True)
+
+
 LECTURE_DEMOS = {
     "process": lambda key, **kw: render_process_demo(key, **kw),
     "thread": lambda key, **kw: render_thread_demo(key, backend_open=True),
     "schedule": lambda key, **kw: render_scheduling_demo(key, **kw),
     "thread_sched": lambda key, **kw: render_thread_sched_demo(key, **kw),
     "real_measure": lambda key, **kw: render_real_measure(key),
+    "spin_vs_mutex": lambda key, **kw: render_spin_vs_mutex_demo(key, **kw),
 }
 
 
@@ -2036,7 +2223,7 @@ def render_lanes(lanes, colors, total=None, tips=None, highlight=None):
                  f"<div style='display:flex;gap:2px;flex:1'>")
         for name, a, b in segs:
             bg = colors.get(name, "#E5E7EB") if name != "idle" else "#FFFFFF"
-            shown = {"RUNNING": "RUN", "BLOCKED": "BLK", "BLOCKED (join)": "JOIN"}.get(name, name) if (b - a) / total < 0.1 else name
+            shown = {"RUNNING": "RUN", "BLOCKED": "BLK", "BLOCKED (join)": "JOIN", "SPINNING": "SPIN", "IN CS": "CS"}.get(name, name) if (b - a) / total < 0.1 else name
             tip = html_mod.escape(tips.get((label, a), ""), quote=True)
             border = "3px solid #EA580C" if (label, a) in highlight else "1px solid #CBD5E1"
             html += (f"<div title='{tip}' style='width:{(b-a)/total*100}%;background:{bg};border:{border};border-radius:8px;"
@@ -2948,6 +3135,12 @@ def main():
         st.header("Scenario 2b — Two threads, one shared variable")
         st.markdown("**Goal:** show how interleaving creates a lost update.")
         render_thread_demo("tab_thread", backend_open=True)
+        st.divider()
+        st.header("Scenario 2d — Spinlock vs mutex: two ways to wait")
+        st.markdown("**Goal:** see what each way of waiting does to scheduling: a spinning thread stays RUNNING and burns CPU, "
+                    "a blocked thread sleeps and frees the CPU.")
+        render_terms(["Mutex", "Spinlock"])
+        render_spin_vs_mutex_demo("tab_spin")
 
     with tabs[4]:
         st.header("Scenario 3 — Same jobs, different scheduler")
