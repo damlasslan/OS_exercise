@@ -422,6 +422,9 @@ def render_deck(prefix, slides, demos, say_en_map=None, qa_map=None, links_on_fi
     if demo:
         st.markdown("<span class='demo-label'>LIVE DEMO</span>", unsafe_allow_html=True)
         demos[demo](f"{prefix}_s{idx+1}", **cur.get("demo_args", {}))
+    if cur.get("demo2"):
+        with st.expander("🔬 Measure it for real on the server (the /usr/bin/time -v counters)", expanded=False):
+            demos[cur["demo2"]](f"{prefix}_s{idx+1}_real")
 
     lang = notes_lang()
     say_tr = cur.get("say", [])
@@ -1305,6 +1308,7 @@ THREAD_SLIDES = [
         "layers": ["run", "res"],
         "code": (("app", "Run it yourself · Linux / WSL", RUN_THREAD_CMDS), ("os", "Measure it yourself · preview of Week 11", MEASURE_CMDS)),
         "demo": "thread_sched",
+        "demo2": "real_measure",
         "board": ["V18_1"],
         "say": ["Süre kalırsa ölçün (Week 11 önizlemesi): /usr/bin/time -v ile real yaklaşık 3 s, user çok daha küçük; voluntary context switch'ler bloke olmayı, involuntary olanlar preemption'ı sayar. Sayılar makineye göre değişir, öğrenciler kendi sonuçlarını kaydetsin.",
                 "Üç sonucu öğrencilere buldurun: T1'in beklemesi T2'yi engellemez; T1 uyanınca önce READY olur; CPU'ya hangi thread'in alınacağına scheduler karar verir.",
@@ -1354,11 +1358,138 @@ THREAD_SLIDES = [
 SLIDES[7:7] = THREAD_SLIDES
 
 
+# ---------------------------------------------------------------------------
+# Real measurement on the Linux server (the same counters /usr/bin/time -v reads)
+# ---------------------------------------------------------------------------
+import time as _time
+import platform as _platform
+
+REAL_DIR = BASE_DIR / "real"
+BIN_DIR = Path(tempfile.gettempdir()) / "osx_bin"
+
+
+@st.cache_resource(show_spinner="Compiling thread_demo.c with gcc (first run only)...")
+def _compile_thread_demo():
+    gcc = shutil.which("gcc") or shutil.which("cc")
+    if not gcc:
+        raise RuntimeError("gcc is not installed on this server.")
+    BIN_DIR.mkdir(exist_ok=True)
+    out = BIN_DIR / "thread_demo"
+    r = subprocess.run([gcc, "-O0", "-pthread", str(REAL_DIR / "thread_demo.c"), "-o", str(out)],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip() or "gcc failed")
+    return str(out)
+
+
+def measure_child(cmd, pin_cpu=None, timeout=40):
+    """Run cmd and return wall time plus the child's own rusage (os.wait4), so that
+    programs started by other users of the site do not leak into the numbers."""
+    def pre():
+        if pin_cpu is not None:
+            os.sched_setaffinity(0, {pin_cpu})
+    t0 = _time.perf_counter()
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         preexec_fn=pre if pin_cpu is not None else None)
+    try:
+        out, err = p.stdout.read(), p.stderr.read()
+    finally:
+        p.stdout.close(); p.stderr.close()
+    _, status, ru = os.wait4(p.pid, 0)
+    wall = _time.perf_counter() - t0
+    p.returncode = os.waitstatus_to_exitcode(status)
+    return {"wall": wall, "user": ru.ru_utime, "sys": ru.ru_stime, "vol": ru.ru_nvcsw, "invol": ru.ru_nivcsw,
+            "out": out, "err": err, "rc": p.returncode}
+
+
+REAL_WORKLOADS = {
+    "thread_demo: T1 sleeps 3 s, T2 computes": "mixed",
+    "CPU-bound: thread_demo without the sleep": "cpu",
+    "I/O-bound: dd writes 32 MB with oflag=sync": "io",
+}
+
+
+def render_real_measure(key):
+    st.caption("Runs a real program on the Linux server behind this site and reads the kernel's own counters "
+               "for that process (the same numbers `/usr/bin/time -v` prints). Numbers vary from run to run and machine to machine.")
+    if _platform.system() != "Linux":
+        st.info("Real measurement needs Linux; it works on the deployed site (Streamlit Cloud).")
+        return
+    c1, c2, c3 = st.columns([2, 1, 1])
+    with c1:
+        wl = st.radio("Program", list(REAL_WORKLOADS), key=f"{key}_wl")
+    with c2:
+        iters = st.select_slider("T2 loop iterations", options=[10_000_000, 50_000_000, 100_000_000, 300_000_000],
+                                 value=100_000_000, key=f"{key}_it", format_func=lambda v: f"{v // 1_000_000} M")
+    with c3:
+        try:
+            cpus = sorted(os.sched_getaffinity(0))
+        except Exception:
+            cpus = [0]
+        pin = st.toggle(f"Pin to one CPU (like taskset -c {cpus[0]})", key=f"{key}_pin")
+        st.caption(f"This server lets us use {len(cpus)} CPU(s).")
+    kind = REAL_WORKLOADS[wl]
+    if kind == "io":
+        shown = "dd if=/dev/zero of=/tmp/osx_io.bin bs=1M count=32 oflag=sync"
+    else:
+        shown = f"./thread_demo {3 if kind == 'mixed' else 0} {iters}"
+    st.code(("taskset -c %d " % cpus[0] if pin else "") + "/usr/bin/time -v " + shown, language="bash")
+    hist_key = f"{key}_history"
+    if st.button("▶ Run and measure on the server", type="primary", key=f"{key}_run"):
+        try:
+            if kind == "io":
+                target = Path(tempfile.gettempdir()) / f"osx_io_{os.getpid()}_{_time.time_ns()}.bin"
+                cmd = ["dd", "if=/dev/zero", f"of={target}", "bs=1M", "count=32", "oflag=sync"]
+            else:
+                cmd = [_compile_thread_demo(), "3" if kind == "mixed" else "0", str(iters)]
+            with st.spinner("Running..."):
+                r = measure_child(cmd, cpus[0] if pin else None)
+            if kind == "io":
+                try:
+                    target.unlink()
+                except Exception:
+                    pass
+        except Exception as e:
+            st.error(f"Could not run the measurement: {e}")
+            return
+        cpu = r["user"] + r["sys"]
+        share = cpu / r["wall"] if r["wall"] > 0 else 0
+        st.session_state.setdefault(hist_key, []).append({
+            "Program": wl.split(":")[0], "Pinned": "yes" if pin else "no",
+            "Wall clock (s)": round(r["wall"], 3), "User (s)": round(r["user"], 3), "Sys (s)": round(r["sys"], 3),
+            "CPU share": f"{share * 100:.0f}%", "Voluntary cs": r["vol"], "Involuntary cs": r["invol"]})
+        m = st.columns(6)
+        m[0].metric("Wall clock", f"{r['wall']:.2f} s")
+        m[1].metric("User CPU", f"{r['user']:.2f} s")
+        m[2].metric("System CPU", f"{r['sys']:.2f} s")
+        m[3].metric("CPU share", f"{share * 100:.0f}%", help="(user + sys) / wall clock")
+        m[4].metric("Voluntary cs", r["vol"], help="The process blocked and gave up the CPU (sleep, I/O, join).")
+        m[5].metric("Involuntary cs", r["invol"], help="The scheduler preempted the process.")
+        if share >= 0.8:
+            st.success(f"real ≈ user + sys → CPU-bound: the program computed {share * 100:.0f}% of the time.")
+        elif share <= 0.3:
+            st.warning(f"real ≫ user + sys → mostly waiting (I/O or sleep): the CPU was busy only {share * 100:.0f}% of the time.")
+        else:
+            st.info(f"A mix of computing and waiting: CPU busy {share * 100:.0f}% of the time.")
+        if kind != "io":
+            st.markdown("**Real program output, in order** — run it several times: is the order always the same?")
+            st.code(r["out"].strip() or "(no output)", language="text")
+        elif r["err"].strip():
+            st.code(r["err"].strip().splitlines()[-1], language="text")
+    if st.session_state.get(hist_key):
+        st.markdown("**Your runs**")
+        st.dataframe(pd.DataFrame(st.session_state[hist_key]), hide_index=True, width="stretch")
+        if st.button("Clear runs", key=f"{key}_clear"):
+            st.session_state[hist_key] = []
+            st.rerun()
+
+
 LECTURE_DEMOS = {
     "process": lambda key, **kw: render_process_demo(key, **kw),
     "thread": lambda key, **kw: render_thread_demo(key, backend_open=True),
     "schedule": lambda key, **kw: render_scheduling_demo(key, **kw),
     "thread_sched": lambda key, **kw: render_thread_sched_demo(key, **kw),
+    "real_measure": lambda key, **kw: render_real_measure(key),
 }
 
 
@@ -2280,6 +2411,11 @@ def main():
             st.markdown("**Measure it yourself** (preview of Week 11)")
             st.code(MEASURE_CMDS, language="bash")
         render_thread_sched_demo("tab_tsched")
+        st.divider()
+        st.header("Scenario 2c — Measure it for real")
+        st.markdown("**Goal:** run the real `thread_demo.c` on a Linux server and read the kernel's counters: "
+                    "wall clock vs CPU time, voluntary vs involuntary context switches.")
+        render_real_measure("tab_real")
         st.divider()
         st.header("Scenario 2b — Two threads, one shared variable")
         st.markdown("**Goal:** show how interleaving creates a lost update.")
