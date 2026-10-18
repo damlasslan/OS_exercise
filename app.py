@@ -1263,7 +1263,12 @@ MEASURE_CMDS = """# GNU time (Debian/Ubuntu: sudo apt install time)
 #   Voluntary context switches     a thread blocked and gave up the CPU
 #   Involuntary context switches   the scheduler preempted a thread
 
-# Compare: remove sleep(3) (CPU-bound) or time a large file copy (I/O-bound)"""
+# Compare: remove sleep(3) (CPU-bound) or time a large file copy (I/O-bound)
+# Measured on this site's Linux server (18 Oct 2026):
+#   thread_demo  wall 3.00 s   user 0.13 s   voluntary 3     involuntary 1-329
+#   no sleep     wall 0.15 s   user 0.13 s   CPU share 88%
+#   dd sync I/O  wall 0.16 s   sys  0.04 s   voluntary 327   involuntary 3
+# Try it: the panel below runs the real program on the server."""
 
 THREAD_SLIDES = [
     {
@@ -1328,6 +1333,14 @@ THREAD_SLIDES = [
                 "Varsayılanda (uyku 3, hesap 6) T1 önce biter. Hesap 1 veya uyku 8 olunca T2 önce biter. Sıra garanti değil; scheduler ve iş süreleri belirler.",
                 "Which thread finishes first? Is the order guaranteed?",
                 "With the defaults (sleep 3, calculation 6) T1 finishes first. With calculation 1 or sleep 8, T2 finishes first. The order is not guaranteed; the scheduler and the work lengths decide."),
+               ("Simülatörde varsayılan ayarla T1 önce bitiyor, gerçek programda ise T2. Neden?",
+                "Simülatörde hesap 6 tık, uyku 3 tık. Gerçek programda 100 milyon adımlık döngü sunucumuzda yaklaşık 0,13 s sürüyor, uyku ise 3 s. Sıra işlerin göreli uzunluğuna ve scheduler'a bağlı; bu yüzden garanti değil.",
+                "In the simulator T1 finishes first by default, in the real program T2 does. Why?",
+                "In the simulator the calculation is 6 ticks and the sleep 3 ticks. In the real program the 100-million-step loop takes about 0.13 s on our server, the sleep 3 s. The order depends on the relative lengths and the scheduler, so it is not guaranteed."),
+               ("Gerçek ölçümde I/O işinde voluntary, CPU işinde CPU payı neden yüksek?",
+                "dd her senkron yazmada diski bekleyip bloke oluyor: 327 voluntary context switch. Uykusuz thread_demo neredeyse hiç beklemiyor: CPU payı %88. Involuntary sayısı sunucudaki diğer yüke göre değişiyor.",
+                "In the real measurement, why is voluntary high for the I/O job and CPU share high for the CPU job?",
+                "dd blocks on every synchronous write while waiting for the disk: 327 voluntary context switches. thread_demo without sleep hardly waits: 88% CPU share. The involuntary count varies with other load on the server."),
                ("Main thread neden iki thread'i de bekliyor?",
                 "pthread_join() olmasaydı main return edip process'i bitirebilir, T1 ve T2'nin işi yarıda kalırdı.",
                 "Why does the main thread wait for both threads?",
