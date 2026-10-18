@@ -176,7 +176,7 @@
  {
   "code": "V06",
   "title": "SRTF step by step",
-  "slides": "82, 86",
+  "slides": "82, 91",
   "board": 1,
   "boards": 1,
   "img": "V06_1.jpg",
@@ -204,7 +204,7 @@
  {
   "code": "V07",
   "title": "Round Robin q = 2: the ready queue",
-  "slides": "87-88",
+  "slides": "92-93",
   "board": 1,
   "boards": 1,
   "img": "V07_1.jpg",
@@ -232,7 +232,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "68-71, 83-85",
+  "slides": "68-71, 83-86",
   "board": 1,
   "boards": 2,
   "img": "V08_1.jpg",
@@ -241,36 +241,42 @@
    "FCFS: bekleme 0, 12, 15. Ortalama 9 ms.",
    "SJF: bekleme 5, 2, 0. Ortalama 2.33 ms. Cevap: SJF.",
    "RR q=4: bekleme 5, 4, 7. Ortalama 5.33 ms. P2'nin bloğu 4–7: 3 ms sürdü.",
-   "Quantum bir üst sınır. P2'nin işi 3 ms'de bitti, CPU'yu hemen bıraktı."
+   "Quantum bir üst sınır. P2'nin işi 3 ms'de bitti, CPU'yu hemen bıraktı.",
+   "Her politika bir soru sorar. FCFS: kim önce geldi? SJF: kimin işi en kısa? RR: kuyrukta sıradaki kim?",
+   "Sorun: P3 yalnızca 2 ms istiyorsa RR neden onu önce çalıştırmıyor? Çünkü RR kısa işleri öne almaz, sıra almayı önceler."
   ],
   "caps_en": [
    "Demo 3 values: P1 12, P2 3, P3 2 ms, all at time 0. Predict first: where do P2 and P3 finish earliest?",
    "FCFS: waiting 0, 12, 15. Average 9 ms.",
    "SJF: waiting 5, 2, 0. Average 2.33 ms. Answer: SJF.",
    "RR q=4: waiting 5, 4, 7. Average 5.33 ms. P2's block is 4–7: it lasted 3 ms.",
-   "A quantum is an upper limit. P2's work ended after 3 ms and it released the CPU immediately."
+   "A quantum is an upper limit. P2's work ended after 3 ms and it released the CPU immediately.",
+   "Each policy asks one question. FCFS: who came first? SJF: who has the shortest job? RR: who is next in the queue?",
+   "Ask: if P3 needs only 2 ms, why doesn't RR run it first? Because RR does not prioritize short jobs; it prioritizes turn-taking."
   ]
  },
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "68-71, 83-85",
+  "slides": "68-71, 83-86",
   "board": 2,
   "boards": 2,
   "img": "V08_2.jpg",
   "caps": [
    "Quantum küçüldükçe ilk yanıt hızlanır ama switch sayısı artar.",
-   "Quantum 12: tablo FCFS ile aynı. Büyük quantum Round Robin'i FCFS'e çevirir."
+   "Quantum 12: tablo FCFS ile aynı. Büyük quantum Round Robin'i FCFS'e çevirir.",
+   "q=1 iki kriterde en iyi ama 8 switch var; her switch'in maliyeti var. En iyi yanıt süresi en iyi genel performans demek değil: ölç, karşılaştır, iyileştir."
   ],
   "caps_en": [
    "As the quantum shrinks, the first response gets faster but the number of switches grows.",
-   "Quantum 12: the table equals FCFS. A huge quantum turns Round Robin into FCFS."
+   "Quantum 12: the table equals FCFS. A huge quantum turns Round Robin into FCFS.",
+   "q=1 is best on two criteria, but it has 8 switches, and every switch has a cost. The best response time is not the best overall performance: measure, compare, optimize."
   ]
  },
  {
   "code": "V09",
   "title": "Priority scheduling and starvation",
-  "slides": "91-93",
+  "slides": "96-98",
   "board": 1,
   "boards": 1,
   "img": "V09_1.jpg",
@@ -292,7 +298,7 @@
  {
   "code": "V10",
   "title": "MLFQ: a mini story",
-  "slides": "94-98",
+  "slides": "99-103",
   "board": 1,
   "boards": 1,
   "img": "V10_1.jpg",
@@ -318,7 +324,7 @@
  {
   "code": "V11",
   "title": "One task, three clocks",
-  "slides": "99-100",
+  "slides": "104-105",
   "board": 1,
   "boards": 1,
   "img": "V11_1.jpg",
@@ -340,7 +346,7 @@
  {
   "code": "V12",
   "title": "Practice solution  (6 / 2 / 4)",
-  "slides": "101-102",
+  "slides": "106-107",
   "board": 1,
   "boards": 1,
   "img": "V12_1.jpg",
@@ -360,7 +366,7 @@
  {
   "code": "V13",
   "title": "Multicore: balance vs locality",
-  "slides": "107-114",
+  "slides": "112-119",
   "board": 1,
   "boards": 1,
   "img": "V13_1.jpg",
@@ -511,6 +517,32 @@
    "Why READY: at tick 1 T2 is new, behind T1 in the queue; at tick 5 T1 woke up; at tick 6 T2's 4-tick slice ended and T1 was ready.",
    "Write two sentences on the board: one process is not one execution flow; one blocked thread does not block the entire process.",
    "Final sentence: the scheduler schedules runnable threads; a blocked thread does not prevent the others in the same process from running."
+  ]
+ },
+ {
+  "code": "V19",
+  "title": "Spinlock vs mutex: two ways to wait",
+  "slides": "129-130, LM 13",
+  "board": 1,
+  "boards": 1,
+  "img": "V19_1.jpg",
+  "caps": [
+   "İki thread aynı işi yapıyor: 1 tick iş, kilit, 4 tick kritik bölüm, kilidi bırak, 1 tick iş. Tek çekirdek, zaman dilimi 4.",
+   "Spinlock: T1'in dilimi kritik bölümün ortasında doluyor. T2 kilidi dolu bulunca dönüyor: RUNNING ama iş yapmıyor.",
+   "Kilidi tutan T1 READY bekliyor, kilidi açamıyor. Dönme ancak T2'nin dilimi dolunca bitiyor: 3 tick boşa, toplam 15.",
+   "Mutex: T2 kilidi dolu bulunca uyuyor, BLOCKED. T1 kritik bölümü bitiriyor, unlock T2'yi uyandırıyor. Toplam 13 tick.",
+   "Sağa sonuçları yazın: tek çekirdekte mutex kazanıyor, iki çekirdekte spinlock biraz daha hızlı, kimse beklemiyorsa ikisi aynı.",
+   "Fark bekleme biçiminde: dönen thread scheduler için RUNNING ve CPU yer; uyuyan thread CPU kullanmaz ama uyuyup uyanmanın bedeli var.",
+   "Spinlock kısa kritik bölüm ve çok çekirdek için, mutex uzun ya da belirsiz bekleme için. Gerçek mutex'ler önce kısa süre döner, sonra uyur."
+  ],
+  "caps_en": [
+   "Two threads do the same work: 1 tick of work, lock, 4 ticks in the critical section, unlock, 1 tick of work. One core, time slice 4.",
+   "Spinlock: T1's time slice ends in the middle of the critical section. T2 finds the lock taken and spins: RUNNING but doing no work.",
+   "The lock holder T1 waits in READY and cannot release the lock. The spinning ends only when T2's slice runs out: 3 ticks wasted, 15 in total.",
+   "Mutex: T2 finds the lock taken and sleeps, BLOCKED. T1 finishes the critical section and unlock wakes T2. 13 ticks in total.",
+   "Write the results on the right: on one core the mutex wins, on two cores the spinlock is slightly faster, and with no waiting both are the same.",
+   "The difference is how a thread waits: a spinning thread is RUNNING for the scheduler and eats CPU; a sleeping thread uses no CPU, but sleeping and waking up has a cost.",
+   "Spinlock for short critical sections on multicore, mutex for long or unknown waits. Real mutexes spin briefly first, then sleep."
   ]
  }
 ]

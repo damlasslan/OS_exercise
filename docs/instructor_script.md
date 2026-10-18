@@ -10,12 +10,12 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 
 | Time | PPT | LM | Content |
 | --- | --- | --- | --- |
-| 00–45 | 1–28 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling: roles and snapshot, I/O-bound ≠ CPU-free, activities that do not execute as CPU threads, application vs OS vs hardware (optional: PPT 122–123 measure it yourself) |
-| 45–70 | 29–45 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) |
+| 00–45 | 1–28 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling: roles and snapshot, I/O-bound ≠ CPU-free, activities that do not execute as CPU threads, application vs OS vs hardware (optional: PPT 127–128 measure it yourself) |
+| 45–70 | 29–45 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) (optional: PPT 129–130 Week 5 tools seen by the scheduler, spinlock vs mutex) |
 | 70–100 | 46–67 | 14 + Real-World | Four real systems (synchronization + scheduling), preemption; Round Robin is first named on LM 14 |
 | 100–110 | — | — | Break |
-| 110–160 | 68–106 | 15–20 | FCFS, SJF, SRTF, Demo 3, Demo 4 (Round Robin quantum), Priority, MLFQ, metrics, practice |
-| 160–180 | 107–121 | 21–22 | Multicore, bank example, wrap-up |
+| 110–160 | 68–111 | 15–20 + Real-World 14–17 | FCFS, SJF, SRTF, Demo 3, Demo 4 (which quantum performs best?), engineering decisions (PPT 86–90), Priority, MLFQ, metrics, practice |
+| 160–180 | 112–126 | 21–22 | Multicore, bank example, wrap-up |
 
 ## Key messages
 
@@ -26,5 +26,7 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 - `counter++` is LOAD → ADD → STORE; unsynchronized shared state loses updates even on one core (Demo 2).
 - Week 5's five tools seen by the scheduler (LM 13): mutex, semaphore and condition variable make a waiter BLOCKED; a spinlock leaves it RUNNING and burning CPU (live: 1 core 15 vs 13 ticks, 2 cores 9 vs 10); an atomic operation never waits.
 - Same jobs, different policy, different waiting time (Demos 3–4).
+- Each policy asks one question — FCFS: who came first? SJF: who has the shortest job? RR: who is next in the queue? RR does not favour short jobs; it favours turn-taking (Demo 3).
 - Measure first: `real ≈ user + sys` → CPU-bound; `real ≫ user + sys` → the program waits — find out where (I/O, lock, sleep, run queue).
+- There is no universally best scheduling policy: the best choice depends on requirements, workload and trade-offs. Best response time ≠ best overall performance (Demo 4: q = 1 has the most switches); quantum size is an engineering trade-off; developers design the workload, the OS schedules it.
 - Scheduling ≠ synchronization: speed and timing come from the scheduler, correctness from locks, transactions and atomic operations.

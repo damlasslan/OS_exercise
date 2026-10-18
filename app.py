@@ -199,9 +199,10 @@ def render_process_demo(key_prefix, p0=(1, 0), p1=(4, 100), switch="SWITCH_ON_IO
 
 
 SCHED_POLICY_HELP = {
-    "FCFS": "First-Come, First-Served: the process that arrived first runs to completion; no interruption.",
-    "SJF": "Shortest Job First (non-preemptive): when the CPU is free, the waiting process with the shortest burst runs to completion.",
-    "Round Robin": "Each process runs for at most one quantum, then goes to the end of the ready queue if it still has work.",
+    "FCFS": "**Who came first?** First-Come, First-Served: the process that arrived first runs to completion; no interruption.",
+    "SJF": "**Who has the shortest job?** Shortest Job First (non-preemptive): when the CPU is free, the waiting process with the shortest burst runs to completion.",
+    "Round Robin": "**Who is next in the queue?** Each process runs for at most one quantum, then goes to the end of the ready queue if it still has work. "
+                   "It does not favour short jobs; it favours turn-taking.",
 }
 
 
@@ -715,8 +716,14 @@ SAY_EN = {
          "RR q=2: at time 2 P2 has not arrived yet, so P1 continues; at time 4 it is P2's turn."],
     15: ["The total work is still 14 ms. Only the order changed. A real OS does not know job lengths; it estimates them from the past."],
     16: ["SRTF is not on the site; draw it on the board. If short jobs keep arriving, a long job can starve."],
-    17: ["The answer is SJF: P3 finishes at time 2, P2 at time 5. But SJF assumes job lengths are known in advance."],
-    18: ["Link back: we named Round Robin on LM 14 and now study it in detail; the 4-tick time slice in the thread demo (LM 9) was also a quantum.",
+    17: ["The answer is SJF: P3 finishes at time 2, P2 at time 5. But SJF assumes job lengths are known in advance.",
+         "Write the three questions on the board: FCFS: Who came first? · SJF: Who has the shortest job? · RR: Who is next in the queue? Each policy asks one of them.",
+         "Ask: if P3 needs only 2 ms, why doesn't Round Robin run it first? Answer: RR does not prioritize short jobs; it prioritizes turn-taking. With RR q=4 P3 waits until 7; SJF is the policy that puts the short job first."],
+    18: ["Students will see that q=1 is best on two criteria. But it makes 8 context switches, and each has a cost. This simulation does not add the switching cost to the total time; a real system must also measure CPU overhead, cache behaviour and throughput. So we cannot say q=1 is the best choice for every system.",
+         "Do not declare q=2 or q=4 the optimum; they are candidates that trade fewer switches against better response time. Ask: 'Would you choose q=1 for a server handling millions of requests?' Expected answer: 'Not necessarily. We must also consider throughput, CPU overhead and workload characteristics.'",
+         "The second section moves to system types: an interactive application considers a shorter quantum, batch a longer one; a general-purpose OS adapts to the workload; in a real-time system RR's quantum alone may be insufficient. Do not quote q values for real systems.",
+         "Main engineering message: there is no universally best scheduling policy. Then go to tab 4 (Real-World Systems), slides 14–17.",
+         "Link back: we named Round Robin on LM 14 and now study it in detail; the 4-tick time slice in the thread demo (LM 9) was also a quantum.",
          "The two P1 boxes at 9–13 and 13–17 are not a real switch; nobody else is in the queue.",
          "Tiny quantum: everyone gets a turn quickly, but switching costs grow. Huge quantum: RR turns into FCFS."],
     19: ["Matching the SJF order is a coincidence. Present MLFQ as a strategy, not as implementation detail."],
@@ -854,8 +861,20 @@ QA = {
     17: [("P2 ve P3 hangi politikada en erken biter?",
           "SJF: P3 zaman 2'de, P2 zaman 5'te biter. RR q=4'te 9 ve 7, FCFS'te 17 ve 15. Ortalama bekleme: SJF 2,33 · RR 5,33 · FCFS 9,00 ms.",
           "In which policy do P2 and P3 finish earliest?",
-          "SJF: P3 at time 2, P2 at time 5. With RR q=4 at 9 and 7, with FCFS at 17 and 15. Average waiting: SJF 2.33 · RR 5.33 · FCFS 9.00 ms.")],
-    18: [("P2'nin bloğu neden 4–8 değil de 4–7?",
+          "SJF: P3 at time 2, P2 at time 5. With RR q=4 at 9 and 7, with FCFS at 17 and 15. Average waiting: SJF 2.33 · RR 5.33 · FCFS 9.00 ms."),
+         ("P3 yalnızca 2 ms istiyorsa Round Robin neden onu önce çalıştırmıyor?",
+          "Çünkü Round Robin kısa işleri öne almaz; sıra almayı (turn-taking) önceler. Kuyruk sırası P1, P2, P3: P1 4 ms, P2 3 ms çalışıyor, P3 ancak 7'de başlıyor. Kısa işi öne alan SJF'dir; RR'nin amacı herkesin kısa sürede sıra almasıdır.",
+          "If P3 needs only 2 ms, why doesn't Round Robin run it first?",
+          "Because Round Robin does not prioritize short jobs; it prioritizes turn-taking. The queue order is P1, P2, P3: P1 runs 4 ms, P2 3 ms, and P3 starts only at 7. SJF is the policy that puts short jobs first; RR's goal is that everyone gets a turn soon.")],
+    18: [("Milyonlarca isteğe yanıt veren bir sunucu için q=1'i seçer miydiniz?",
+          "Not necessarily. q=1 bu demoda yanıt ve bekleme süresinde en iyi, ama en çok context switch'i yapıyor. Gerçek bir sunucuda switch maliyeti, CPU overhead, cache davranışı ve throughput da ölçülmeli; karar iş yüküne ve sistemin hedefine göre verilir.",
+          "Would you choose q=1 for a server handling millions of requests?",
+          "Not necessarily. In this demo q=1 is best for response and waiting time, but it makes the most context switches. A real server must also measure switching cost, CPU overhead, cache behaviour and throughput; the decision depends on the workload and the system's goal."),
+         ("Hangi quantum en iyisi?",
+          "Hedefe bağlı. En düşük yanıt ve bekleme: q=1; en az switch: q=12 (= FCFS, en yavaş yanıt); dengeli seçim için q=2 ya da 4 aday, ama switch maliyeti ölçülmeden kesin optimum denemez. En iyi yanıt süresi en iyi genel performans değildir.",
+          "Which quantum is best?",
+          "It depends on the objective. Lowest response and waiting: q=1; fewest switches: q=12 (= FCFS, slowest response); q=2 or 4 are candidates for a balanced choice, but without measuring the switching cost none is a proven optimum. The best response time is not the best overall performance."),
+         ("P2'nin bloğu neden 4–8 değil de 4–7?",
           "P2'nin yalnızca 3 ms işi vardı. Quantum bir üst sınır; iş bitince CPU hemen bırakılır.",
           "Why is P2's block 4–7 and not 4–8?",
           "P2 only needed 3 ms. The quantum is an upper limit; the CPU is released as soon as the job ends."),
@@ -1084,6 +1103,7 @@ All five were covered in **Week 5** (atomic and CAS, mutex, spinlock, semaphore,
         "layers": ["app", "os", "res"],
         "code": (("app", "Application code · with a mutex", APP_MUTEX), ("os", "OS kernel · pseudocode", OS_MUTEX)),
         "demo": "spin_vs_mutex",
+        "board": ["V19_1"],
         "say": ["Linux'ta kilit bekleyen thread futex ile uyutulur. Scheduling ≠ synchronization.",
                 "Açılır bölüm Week 5'in tekrarı: beş aracı yeniden öğretmeyin, yalnızca 'bekleyen thread hangi durumda, CPU harcıyor mu?' sorusunu sorun. Mutex, semaphore ve condition variable bekleyeni BLOCKED yapar; spinlock RUNNING bırakır; atomic işlem hiç beklemez.",
                 "Canlı demo: önce 1 çekirdek, kritik bölüm 4. Spinlock satırında T2 3 tick SPINNING: kilidi tutan T1 CPU'yu alamadığı için kilit açılamıyor. Mutex'te T2 uyuyor ve T1 işini bitiriyor: toplam 15 → 13 tick.",
@@ -1138,6 +1158,7 @@ All five were covered in **Week 5** (atomic and CAS, mutex, spinlock, semaphore,
         "kicker": "Slide 17 · LIVE DEMO 3 · all four layers",
         "terms": ["FCFS", "SJF", "RR"],
         "title": "One workload, three scheduling policies",
+        "flow": "FCFS: Who came first?   ·   SJF: Who has the shortest job?   ·   RR: Who is next in the queue?",
         "body": """
         P1 = 12, P2 = 3, P3 = 2 ms, all at t = 0. <b>Predict:</b> which policy finishes P2 and P3 earliest?
         <br>Expected average waiting: <b>FCFS 9.00</b> · <b>SJF 2.33</b> · <b>RR q=4 5.33</b> ms.
@@ -1147,17 +1168,51 @@ All five were covered in **Week 5** (atomic and CAS, mutex, spinlock, semaphore,
         "demo": "schedule",
         "demo_args": {"jobs": [("P1", 0, 12), ("P2", 0, 3), ("P3", 0, 2), ("P4", 20, 1)], "n_jobs": 3, "policy": "FCFS", "quantum": 4},
         "board": ["V08_1"],
-        "say": ["Cevap SJF: P3 zaman 2'de, P2 zaman 5'te biter. Ama SJF iş sürelerini önceden bilmeyi varsayar."],
+        "say": ["Cevap SJF: P3 zaman 2'de, P2 zaman 5'te biter. Ama SJF iş sürelerini önceden bilmeyi varsayar.",
+                "Tahtaya üç soruyu alt alta yazın: FCFS: Who came first? · SJF: Who has the shortest job? · RR: Who is next in the queue? Her politika bu sorulardan birini sorar.",
+                "Sorun: P3 yalnızca 2 ms istiyorsa Round Robin neden onu önce çalıştırmıyor? Cevap: RR kısa işleri öne almaz, sıra almayı önceler. RR q=4'te P3 7'ye kadar bekliyor; kısa işi öne alan SJF'dir."],
     },
     {
         "kicker": "Slide 18 · LIVE DEMO 4 · Round Robin",
         "terms": ["RR", "Quantum", "Context switch"],
-        "title": "A time quantum is a LIMIT, not a fixed duration",
+        "title": "Round Robin: which quantum performs best?",
         "body": """
-        Same workload, Round Robin. With quantum 4, P2 runs 4–7 and exits early.
+        Same workload, Round Robin. With quantum 4, P2 runs 4–7 and exits early: a quantum is a <b>limit</b>, not a fixed duration.
         Then try quantum <b>1, 2, 4, 12</b>: average response 1.00 / 2.00 / 3.67 / 9.00 ms;
         real context switches 8 / 5 / 3 / 2. Quantum 12 = FCFS.
+        <br><b>Which quantum is best? It depends on the objective.</b>
+        Next: the engineering-decision slides in the <i>4 Real-World Systems</i> tab (slides 14–17).
         """,
+        "flow": "There is no universally best scheduling policy: the best choice depends on requirements, workload and trade-offs.",
+        "sections": [("Which quantum performs best? — decision summary", """
+| Performance objective | Best result in this demo | Trade-off |
+| --- | --- | --- |
+| Minimum average response time | q = 1 | Highest switch count |
+| Minimum average waiting time | q = 1 | Highest switch count |
+| Minimum context switches | q = 12 | Slowest average response |
+| Balanced choice | q = 2 or 4, candidates | Must evaluate switching cost |
+
+q = 2 or q = 4 are **candidates to evaluate**, not a proven optimum: they trade fewer context switches against better response time.
+
+> **Best response time ≠ best overall performance**
+> - Small quantum → faster first response, more context switches.
+> - Large quantum → fewer context switches, potentially longer response times.
+> - Real engineering → measure, compare, optimize.
+
+This simulation does not add the cost of a switch to the total time. A real system must also measure CPU overhead, cache behaviour and throughput.
+"""),
+                     ("Choosing quantum for different system types", """
+| System type | Primary criterion | Quantum selection |
+| --- | --- | --- |
+| Interactive application | Low response time | Consider a shorter quantum |
+| Batch processing | High throughput, low overhead | Consider a longer quantum |
+| General-purpose OS | Balance responsiveness and throughput | Workload-adaptive scheduling |
+| Real-time system | Deadline compliance, predictability | RR quantum alone may be insufficient |
+
+**Quantum size is an engineering trade-off, not a universal optimization rule.**
+
+Modern Linux and Windows schedulers use more complex policies than classic fixed-quantum Round Robin; real-time systems consider fixed-priority and deadline-based approaches. The q values in this demo are abstract: do not carry them over to real systems.
+""")],
         "layers": ["os", "run", "res"],
         "code": (("os", "OS kernel · Round Robin timer tick (pseudocode)", OS_TICK), None),
         "demo": "schedule",
@@ -1165,7 +1220,11 @@ All five were covered in **Week 5** (atomic and CAS, mutex, spinlock, semaphore,
         "board": ["V07_1", "V08_2"],
         "say": ["Geri bağlantı: LM 14'te adını koyduğumuz Round Robin'i şimdi ayrıntılı inceliyoruz; thread demosundaki (LM 9) 4 tıklık zaman dilimi de bir quantum'du.",
                 "9–13 ve 13–17 arasındaki iki P1 kutusu gerçek bir switch değil; kuyrukta başka iş yok.",
-                "Küçük quantum: herkes çabuk sıra alır ama switch maliyeti artar. Büyük quantum: RR, FCFS'e döner."],
+                "Küçük quantum: herkes çabuk sıra alır ama switch maliyeti artar. Büyük quantum: RR, FCFS'e döner.",
+                "Öğrenciler tabloda q=1'in iki kriterde en iyi sonucu verdiğini görecekler. Ancak context switch sayısı 8. Bunun bir maliyeti var. Bu simülasyonda switch maliyetini toplam zamana eklemedik. Gerçek sistemde CPU overhead, cache davranışı ve throughput da ölçülmeli. Dolayısıyla q=1'in bütün sistemler için en iyi seçim olduğunu söyleyemeyiz.",
+                "q=2 veya q=4'ü kesin optimum ilan etmeyin; daha az switch ile daha iyi yanıt süresi arasında değerlendirilecek adaylar. Sorun: 'Would you choose q=1 for a server handling millions of requests?' Beklenen cevap: 'Not necessarily. We must also consider throughput, CPU overhead and workload characteristics.'",
+                "İkinci açılır bölüm sistem türüne geçiş: etkileşimli uygulama kısa, batch uzun quantum'u değerlendirir; genel amaçlı OS iş yüküne uyum sağlar; real-time sistemde tek başına RR quantum'u yetmeyebilir. Gerçek sistemler için q=1, 2, 4 gibi kesin değer söylemeyin.",
+                "Ana mühendislik mesajı: There is no universally best scheduling policy. Ardından 4. sekmede (Real-World Systems) slayt 14–17'ye geçin."],
     },
     {
         "kicker": "Slide 19 · Priority and MLFQ (board only)",
@@ -2155,6 +2214,15 @@ def render_spin_vs_mutex_demo(key, cores=1, cs=4):
         st.markdown(f"**{title}**")
         render_lanes([(n, l) for n, l in r["lanes"].items()], LOCK_COLORS)
         render_lanes([(f"Core {c}", l) for c, l in enumerate(r["core_lanes"])], {"T1": "#E5E7EB", "T2": "#FDE68A"})
+        ab = {"RUNNING": "RUN", "IN CS": "CS", "SPINNING": "SPIN", "READY": "READY", "BLOCKED": "BLOCKED"}
+        grid = {n: [ab.get(x, "") for x in l] for n, l in r["lanes"].items()}
+        for c, l in enumerate(r["core_lanes"]):
+            grid[f"Core {c}"] = ["—" if x == "idle" else x for x in l]
+        st.dataframe(pd.DataFrame(grid, index=[str(t) for t in range(r["total"])]).T.style.map(
+            lambda v: f"background-color: {TICK_COLORS[v]}" if v in TICK_COLORS else ""), width="stretch")
+        st.dataframe(pd.DataFrame([{"Thread": n, "CPU (RUN + CS)": g.count("RUN") + g.count("CS"), "Spinning (wasted CPU)": g.count("SPIN"),
+                                    "Waiting in READY": g.count("READY"), "BLOCKED on the lock": g.count("BLOCKED")}
+                                   for n, g in grid.items() if n in r["lanes"]]), hide_index=True, width="stretch")
         with st.expander("Events, tick by tick", expanded=False):
             st.dataframe(pd.DataFrame([{"t": tk, "Event": e} for tk, e in r["events"]]), hide_index=True, width="stretch")
     st.caption("Useful share = useful work ticks ÷ available core-ticks (cores × total time). "
@@ -2293,6 +2361,39 @@ def multicore_simulate(jobs, cores, policy="FCFS", quantum=1):
     return state, timeline
 
 
+TICK_COLORS = {"RUN": "#BBF7D0", "READY": "#FEF08A", "BLOCKED": "#BFDBFE", "CS": "#4ADE80", "SPIN": "#FCA5A5"}
+
+
+def render_task_ticks(names, cpu_lanes, pending, blocked=None, unit="ms", title="Tick by tick"):
+    """One column per tick: RUN on a core, BLOCKED (waiting for a lock), READY (has work, waits for a CPU), empty otherwise.
+    pending(name, t) -> the task has unfinished work at tick t; blocked(name, t) -> it waits for a lock, not for a CPU."""
+    total = len(cpu_lanes[0])
+    grid, summary = {}, []
+    for n in names:
+        row = []
+        for t in range(total):
+            if any(cl[t] == n for cl in cpu_lanes):
+                row.append("RUN")
+            elif blocked and blocked(n, t):
+                row.append("BLOCKED")
+            elif pending(n, t):
+                row.append("READY")
+            else:
+                row.append("")
+        grid[n] = row
+        summary.append({"Task": n, f"CPU ({unit})": row.count("RUN"), f"Waiting in READY ({unit})": row.count("READY")}
+                       | ({f"BLOCKED on a lock ({unit})": row.count("BLOCKED")} if blocked else {}))
+    for c, cl in enumerate(cpu_lanes):
+        grid["CPU" if len(cpu_lanes) == 1 else f"Core {c + 1}"] = ["—" if x == "idle" else x for x in cl]
+    st.markdown(f"**{title}** — one column per {unit}")
+    df = pd.DataFrame(grid, index=[str(t) for t in range(total)]).T
+    st.dataframe(df.style.map(lambda v: f"background-color: {TICK_COLORS[v]}" if v in TICK_COLORS else ""), width="stretch")
+    st.dataframe(pd.DataFrame(summary), hide_index=True, width="stretch")
+    st.caption("RUN = executing on a core · READY = has work but waits for a CPU (this is the waiting time) · "
+               + ("BLOCKED = waits for a lock, not for a CPU · " if blocked else "")
+               + "empty = not arrived yet, finished, or waiting for its next period.")
+
+
 def _deadline_table(jobs, task_names):
     rows = []
     for j in jobs:
@@ -2378,6 +2479,9 @@ def render_bank_sched_demo(key):
     for name, a, b in rows:
         tl += [name] * (b - a)
     render_lanes([("CPU", tl)], BANK_COLORS)
+    arr = {n: a for n, a, b in jobs}
+    fin = dict(zip(m["Process"], m["Finish"]))
+    render_task_ticks([n for n, a, b in jobs], [tl], lambda n, t: arr[n] <= t < fin[n])
     st.dataframe(m, hide_index=True, width="stretch")
     short = m[m["Process"] != "Report"]
     c1, c2 = st.columns(2)
@@ -2403,6 +2507,7 @@ def render_robot_sched_demo(key):
     tasks = [(n, p, (log_ms if n == "Logging" else c), pr) for n, p, c, pr in ROBOT_TASKS]
     timeline, jobs = periodic_simulate(tasks, "priority" if pol.startswith("Fixed") else "rr", 16, quantum=3)
     render_lanes([("CPU", timeline)], ROBOT_COLORS)
+    render_task_ticks(["Motor", "Camera", "Logging"], [timeline], lambda n, t: any(j["task"] == n and j["release"] <= t and (j["finish"] is None or t < j["finish"]) for j in jobs))
     table = _deadline_table(jobs, {"Motor", "Camera"})
     st.dataframe(pd.DataFrame(table), hide_index=True, width="stretch")
     misses = sum(1 for r in table if r["Task"] == "Motor" and r["Deadline met?"] == "MISSED")
@@ -2440,6 +2545,12 @@ def render_robot_inversion_demo(key):
     colors = {"Motor": "#FECACA", "Camera": "#DBEAFE", "Logging": "#E5E7EB", "Logging*": "#FDE68A"}
     render_lanes([("CPU", tl)], colors)
     st.caption("Logging* = Logging inside the critical section (holding the lock).")
+    lane = [x.rstrip("*") for x in tl]
+    arrive = {"Logging": 0, "Motor": 2, "Camera": 3}
+    done = {n: max(i for i, x in enumerate(lane) if x == n) + 1 for n in arrive}
+    motor_start = lane.index("Motor")
+    render_task_ticks(["Motor", "Camera", "Logging"], [lane], lambda n, t: arrive[n] <= t < done[n],
+                      blocked=lambda n, t: n == "Motor" and arrive[n] <= t < motor_start)
     _steps_table(events, ["Time (ms)", "Event", "Lock"])
     c1, c2 = st.columns(2)
     c1.metric("Motor finishes at", f"{finish} ms")
@@ -2498,6 +2609,7 @@ def render_ticket_sched_demo(key):
     palette = ["#DBEAFE", "#DCFCE7", "#FEF3C7", "#FCE7F3", "#EDE9FE", "#E0F2FE", "#FFE4E6", "#ECFCCB"]
     colors = {f"R{i}": palette[i - 1] for i in range(1, 9)}
     render_lanes([(f"Core {c+1}", tl) for c, tl in enumerate(timeline)], colors)
+    render_task_ticks(list(state), timeline, lambda n, t: state[n]["arrival"] <= t < state[n]["finish"])
     resp = [s["first"] - s["arrival"] for s in state.values()]
     fin = [s["finish"] for s in state.values()]
     c1, c2, c3, c4 = st.columns(4)
@@ -2559,6 +2671,7 @@ def render_stream_sched_demo(key):
     tasks = [("Decoder", 5, 3, 2), ("Update", None, upd, 1)]
     timeline, jobs = periodic_simulate(tasks, "priority" if pol.startswith("Decoder") else "rr", 30, quantum=2)
     render_lanes([("CPU", timeline)], {"Decoder": "#DCFCE7", "Update": "#E5E7EB"})
+    render_task_ticks(["Decoder", "Update"], [timeline], lambda n, t: any(j["task"] == n and j["release"] <= t and (j["finish"] is None or t < j["finish"]) for j in jobs))
     table = _deadline_table(jobs, {"Decoder"})
     for r in table:
         r["Frame"] = r.pop("Task")
@@ -3053,20 +3166,139 @@ SECTOR_SLIDES = [
                 "In which systems is the main goal a deadline, and in which correctness?",
                 "Robotic surgery and video: deadlines (control period, frame time). Banking and tickets: correctness (no lost update, no double booking), then response time.")],
     },
+    {
+        "kicker": "Engineering decisions · 1/4 · PPT slide 87",
+        "title": "Real-world scheduling decisions",
+        "body": """
+        First ask: <b>what are we trying to optimize?</b> Then: which scheduling approach supports it?
+        <table style='width:100%;border-collapse:collapse;margin:10px 0;font-size:.98rem'>
+        <tr style='background:#F1F5F9'><th style='text-align:left;padding:6px'>Real-world system</th><th style='text-align:left'>Primary engineering criteria</th><th style='text-align:left'>Scheduling approach to consider</th></tr>
+        <tr><td style='padding:6px'><b>Interactive desktop / UI</b></td><td>Response time, responsiveness</td><td>Preemptive, latency-aware scheduling; short response delays</td></tr>
+        <tr><td style='padding:6px'><b>Banking transaction system</b></td><td>Throughput, tail latency, fairness, consistency</td><td>Fair scheduling + controlled concurrency; priority where justified</td></tr>
+        <tr><td style='padding:6px'><b>Video rendering / batch processing</b></td><td>Throughput, CPU utilization, overhead</td><td>Batch-oriented scheduling, parallel workers, efficient CPU allocation</td></tr>
+        <tr><td style='padding:6px'><b>Real-time robotic surgery</b></td><td>Deadline compliance, predictability, safety</td><td>Real-time priority / deadline scheduling with bounded worst-case latency</td></tr></table>
+        <b>Important:</b> these are not four ready-made scheduler modes to pick in Windows or Linux. OS policies, thread priorities,
+        application architecture and resource limits are considered together. The scheduler alone does not guarantee banking
+        consistency (transactions and synchronization are needed), and high priority alone does not guarantee a deadline in robotic surgery.
+        """,
+        "flow": "There is no universally best scheduling policy. The best choice depends on requirements, workload and trade-offs.",
+        "say": ["Öğrencilere doğrudan 'hangi algoritmayı seçiyoruz?' demeyin; önce 'hangi özelliği optimize etmeye çalışıyoruz?' diye sorun.",
+                "Bunlar Windows veya Linux'ta seçilecek dört hazır scheduler modu değildir. Gerçek sistemlerde OS politikaları, thread öncelikleri, uygulama mimarisi ve kaynak kısıtları birlikte değerlendirilir.",
+                "Bankacılıkta veri tutarlılığını scheduler tek başına garanti etmez; transaction ve senkronizasyon gerekir. Robotik cerrahide yalnızca yüksek öncelik vermek deadline garantisi sağlamaz. Kesin quantum değeri önermeyin."],
+        "say_en": ["Do not ask 'which algorithm do we choose?' first; ask 'which property are we trying to optimize?'",
+                   "These are not four ready-made scheduler modes in Windows or Linux. Real systems weigh OS policies, thread priorities, application architecture and resource limits together.",
+                   "In banking the scheduler alone does not guarantee consistency; transactions and synchronization are needed. In robotic surgery high priority alone does not guarantee a deadline. Do not suggest exact quantum values."],
+        "qa": [("Linux'ta bankacılık için 'fair', robot için 'real-time' modu mu seçiyoruz?",
+                "Hayır. Linux ve Windows bu dört satırı hazır mod olarak sunmaz. Örneğin Linux'ta normal thread'ler genel amaçlı scheduler'la, kritik thread'ler SCHED_FIFO gibi real-time politikalarla çalışabilir; ama asıl karar uygulama mimarisi, öncelikler, worker sayısı ve kaynak sınırlarıyla birlikte verilir ve ölçülerek doğrulanır.",
+                "In Linux, do we pick a 'fair' mode for banking and a 'real-time' mode for the robot?",
+                "No. Linux and Windows do not offer these four rows as ready-made modes. On Linux, for example, normal threads run under the general-purpose scheduler and critical threads may use real-time policies such as SCHED_FIFO; but the real decision combines application architecture, priorities, worker count and resource limits, and is verified by measurement.")],
+    },
+    {
+        "kicker": "Engineering decisions · 2/4 · PPT slide 88",
+        "title": "How do engineers select a scheduling strategy?",
+        "body": """
+        <div style='display:flex;gap:10px;flex-wrap:wrap;margin:8px 0'>
+        <div style='flex:1;min-width:150px;background:#DBEAFE;border-radius:10px;padding:10px'><b>Interactive UI</b><br>Minimize response latency</div>
+        <div style='flex:1;min-width:150px;background:#CCFBF1;border-radius:10px;padding:10px'><b>Banking</b><br>Control tail latency and maintain throughput</div>
+        <div style='flex:1;min-width:150px;background:#FFEDD5;border-radius:10px;padding:10px'><b>Video rendering</b><br>Maximize throughput, reduce overhead</div>
+        <div style='flex:1;min-width:150px;background:#EDE9FE;border-radius:10px;padding:10px'><b>Robotic surgery</b><br>Meet deadlines predictably</div></div>
+        <div style='text-align:center;font-weight:700;font-size:1.1rem;margin:12px 0'>Requirements → Metrics → Scheduling strategy → Measurement ↺</div>
+        """,
+        "flow": "Optimize the system goal, not a single metric.",
+        "say": ["Dört sistemin de CPU'ya ihtiyacı var. Fakat hepsi aynı problemi çözmüyor. Bir masaüstü uygulamasında kullanıcıya hızlı yanıt vermek önemli. Video işlemede toplam işi verimli bitirmek daha önemli olabilir.",
+                "Robotik cerrahide ise bir işlemin hızlı olması tek başına yeterli değil; belirlenen zaman sınırını güvenilir biçimde karşılaması gerekiyor.",
+                "Bu yüzden önce sistemin gereksinimlerini belirliyoruz. Ardından bunları ölçülebilir kriterlere dönüştürüp uygun scheduling yaklaşımını değerlendiriyoruz; sonra ölçüp tekrar değerlendiriyoruz."],
+        "say_en": ["All four systems need the CPU, but they do not solve the same problem. A desktop application must respond quickly to the user. In video processing, finishing the total work efficiently may matter more.",
+                   "In robotic surgery being fast is not enough on its own; the operation must meet its time limit reliably.",
+                   "So we first state the system's requirements, turn them into measurable criteria, evaluate a suitable scheduling approach, then measure and evaluate again."],
+    },
+    {
+        "kicker": "Engineering decisions · 3/4 · PPT slide 89 · class exercise",
+        "title": "Class exercise — choose the metric",
+        "body": """
+        For each case, pick the metric the system must optimize. Students answer first; then click an option to check.
+        """,
+        "demo": "metric_exercise",
+        "say": ["Önce öğrencilere sözlü cevap verdirin, sonra seçeneklere tıklayın. Cevaplar: 1 → Minimize response time, 2 → Maximize throughput, 3 → Meet deadlines with bounded latency.",
+                "Yanlış seçeneklerin neden yanlış olduğunu da sorun: switch sayısını en aza indirmek tek başına hedef değil; ortalama bekleme süresi deadline garantisi vermez."],
+        "say_en": ["Let students answer out loud first, then click the options. Answers: 1 → Minimize response time, 2 → Maximize throughput, 3 → Meet deadlines with bounded latency.",
+                   "Also ask why the wrong options are wrong: minimizing switches is not a goal by itself; an average waiting time does not guarantee a deadline."],
+    },
+    {
+        "kicker": "Engineering decisions · 4/4 · PPT slide 90",
+        "title": "Who actually makes the scheduling decision?",
+        "body": """
+        Application developers do not set the Linux or Windows kernel quantum directly.
+        <table style='width:100%;border-collapse:collapse;margin:10px 0;font-size:.98rem'>
+        <tr style='background:#F1F5F9'><th style='text-align:left;padding:6px'>Decision</th><th style='text-align:left'>Application developer</th><th style='text-align:left'>OS / system administrator</th></tr>
+        <tr><td style='padding:6px'><b>Workload design</b></td><td>Primary responsibility</td><td>—</td></tr>
+        <tr><td style='padding:6px'><b>Number of application workers</b></td><td>Sets and tunes</td><td>May impose resource limits</td></tr>
+        <tr><td style='padding:6px'><b>Thread priority</b></td><td>Can request</td><td>Applies it according to policy</td></tr>
+        <tr><td style='padding:6px'><b>CPU affinity</b></td><td>Can request</td><td>Applies and may restrict</td></tr>
+        <tr><td style='padding:6px'><b>Scheduling policy</b></td><td>Can request supported options</td><td>Controls</td></tr>
+        <tr><td style='padding:6px'><b>Time quantum</b></td><td>Usually does not set directly</td><td>Depends on the scheduler policy</td></tr></table>
+        """,
+        "flow": "Application developers design the workload. Operating systems schedule execution. Engineers optimize performance by measuring the trade-offs.",
+        "say": ["Öğrenciler, uygulama geliştiricisinin Linux veya Windows kernel'inin quantum değerini doğrudan belirlediğini düşünebilir. Geliştirici iş yükünü tasarlar ve worker sayısını belirler; öncelik, CPU affinity ve politika için talepte bulunabilir; OS ve sistem yöneticisi bunları politikaya göre uygular, sınırlar ya da kontrol eder.",
+                "Bağlantı: thread demosundaki 'Who decides each parameter?' tablosu ve PPT slayt 52 'Who controls CPU scheduling?'."],
+        "say_en": ["Students may think the application developer sets the Linux or Windows kernel quantum directly. The developer designs the workload and sets the number of workers; they can request priority, CPU affinity and a policy; the OS and the administrator apply, limit or control these according to policy.",
+                   "Link: the 'Who decides each parameter?' table in the thread demo and PPT slide 52 'Who controls CPU scheduling?'."],
+        "qa": [("Uygulamam kendi quantum'unu ayarlayabilir mi?",
+                "Genellikle hayır. Uygulama öncelik (nice, pthread_setschedparam), CPU affinity (sched_setaffinity) ya da desteklenen bir politika isteyebilir; zaman dilimi ise OS scheduler'ının politikasına bağlıdır ve çoğu zaman yönetici ayarlarıyla sınırlıdır.",
+                "Can my application set its own quantum?",
+                "Usually not. An application can request a priority (nice, pthread_setschedparam), CPU affinity (sched_setaffinity) or a supported policy; the time slice depends on the OS scheduler's policy and is often limited by administrator settings.")],
+    },
 ]
+
+
+METRIC_EXERCISE = [
+    ("1. A user clicks a button. The application must react quickly.",
+     ["Minimize response time", "Minimize context switches", "Maximize batch throughput"], 0,
+     "The user waits for a reaction: response time is what they feel."),
+    ("2. A batch renderer must finish thousands of independent frames.",
+     ["Guarantee a real-time deadline", "Maximize throughput", "Minimize first-response latency"], 1,
+     "Nobody waits for the first frame; finishing the total work efficiently matters."),
+    ("3. A surgical control task must complete within a strict deadline.",
+     ["Minimize average waiting time", "Minimize switch count", "Meet deadlines with bounded latency"], 2,
+     "An average says nothing about the worst case; the deadline must hold every time."),
+]
+
+
+def render_metric_exercise(key):
+    keys = [f"{key}_q{i}" for i in range(len(METRIC_EXERCISE))]
+    answered = sum(1 for k in keys if st.session_state.get(k) is not None)
+    correct = 0
+    st.markdown(f"**Class Exercise — Choose the Metric** · {answered}/{len(METRIC_EXERCISE)} answered")
+    for k, (q, opts, ans, why) in zip(keys, METRIC_EXERCISE):
+        choice = st.radio(q, opts, index=None, key=k)
+        if choice is not None:
+            if opts.index(choice) == ans:
+                correct += 1
+                st.success(f"Correct. {why}")
+            else:
+                st.error(f"Not quite. The goal here is: {opts[ans]}. {why}")
+    if answered == len(METRIC_EXERCISE):
+        st.info(f"{correct}/{len(METRIC_EXERCISE)} correct. First name the goal, then the metric, then the scheduling approach.")
+
+    def _reset():
+        for k in keys:
+            st.session_state[k] = None
+    st.button("Reset exercise", key=f"{key}_reset", on_click=_reset)
+
 
 SECTOR_DEMOS = {
     "bank": render_bank_demo, "bank_sched": render_bank_sched_demo,
     "robot_lock": render_robot_inversion_demo, "robot_sched": render_robot_sched_demo,
     "ticket": render_ticket_demo, "ticket_sched": render_ticket_sched_demo,
     "stream": render_stream_demo, "stream_sched": render_stream_sched_demo,
+    "metric_exercise": render_metric_exercise,
 }
 
 
 def render_sector_mode():
     st.header("🏭 Real-World Systems")
     st.caption("Lecture Mode for the four architectures in the Week 6 notes. Each system has a Section 2 · Synchronization demo, "
-               "a Section 3 · CPU Scheduling demo and a design decision.")
+               "a Section 3 · CPU Scheduling demo and a design decision. Slides 14–17: engineering decisions (after Demo 4).")
     render_deck("sector", SECTOR_SLIDES, SECTOR_DEMOS)
 
 
