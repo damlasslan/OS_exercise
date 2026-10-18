@@ -298,6 +298,7 @@ GLOSSARY = {
     "MLFQ": ("Multi-Level Feedback Queue", "Several priority queues; a job moves down when it uses its full slice and is periodically boosted back to the top."),
     "Thread": ("Thread", "An execution flow inside a process. Threads of one process share memory but each has its own registers, stack and state."),
     "Main thread": ("Main thread (T0)", "The first thread of a process; it runs main(). Here it creates T1 and T2 and waits for them in pthread_join() — like a parent process that waits for its children with wait()."),
+    "Thread pool": ("Thread pool", "A fixed set of threads created up front and reused: each takes the next job from a shared queue, avoiding the cost of creating a thread per job."),
     "Blocking call": ("Blocking call", "A call such as read() or sleep() that can make the thread wait (BLOCKED) without using the CPU."),
     "pthread_join": ("pthread_join()", "Makes the calling thread wait (BLOCKED) until the given thread has finished."),
     "Mutex": ("Mutual exclusion lock", "Only one thread at a time may hold it; others trying to lock it wait (WAITING)."),
@@ -1132,6 +1133,7 @@ def thread_simulate(cores=1, sleep=3, work=6, quantum=4):
     lanes = {n: [] for n in progs}
     core_lanes = [[] for _ in range(cores)]
     output, t, t1_ready_wait = [], 0, 0
+    slice_events = []  # (tick, core, thread, "preempted" | "continues")
 
     def free_core(n):
         for c in range(cores):
@@ -1160,8 +1162,13 @@ def thread_simulate(cores=1, sleep=3, work=6, quantum=4):
             st_["T1"]["pc"] += 1; st_["T1"]["left"] = progs["T1"][st_["T1"]["pc"]][1]
         for c in range(cores):
             r = running[c]
-            if r is not None and used[c] >= quantum and queue:
-                st_[r]["state"] = "READY"; queue.append(r); running[c] = None
+            if r is not None and used[c] >= quantum:
+                # preempt only if someone is READY and no core is free for it
+                if queue and all(running[x] is not None for x in range(cores)):
+                    slice_events.append((t, c, r, "preempted"))
+                    st_[r]["state"] = "READY"; queue.append(r); running[c] = None
+                elif used[c] == quantum:
+                    slice_events.append((t, c, r, "continues"))
         for c in range(cores):
             if running[c] is None and queue:
                 r = queue.pop(0); running[c] = r; used[c] = 0; st_[r]["state"] = "RUNNING"
@@ -1188,7 +1195,7 @@ def thread_simulate(cores=1, sleep=3, work=6, quantum=4):
         if st_["main"]["state"] == "BLOCKED (join)" and st_["T1"]["state"] == "DONE" and st_["T2"]["state"] == "DONE":
             st_["main"]["state"] = "READY"; queue.append("main"); st_["main"]["pc"] = 2; st_["main"]["left"] = 1
         t += 1
-    return lanes, core_lanes, output, t, t1_ready_wait
+    return lanes, core_lanes, output, t, t1_ready_wait, slice_events
 
 
 STATE_COLORS = {"RUNNING": "#BBF7D0", "READY": "#FEF08A", "BLOCKED": "#BFDBFE", "BLOCKED (join)": "#E9D5FF",
@@ -1204,16 +1211,49 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
         sl = st.slider("T1 sleep / I/O wait (ticks)", 1, 10, sleep, key=f"{key}_sleep",
                        help="sleep(3) in the code: T1 is BLOCKED and uses no CPU.")
     with c3:
-        wk = st.slider("T2 calculation (ticks)", 1, 10, work, key=f"{key}_work",
+        wk = st.slider("T2 calculation loop (ticks)", 1, 10, work, key=f"{key}_work",
                        help="The for-loop in calculator(): pure CPU work.")
-    lanes, core_lanes, output, total, t1_ready = thread_simulate(nc, sl, wk, 4)
-    st.markdown("**Thread states over time** (one process P0; Round Robin, quantum 4)")
+    st.caption(f"A tick is an abstract unit of time, not a second. Each printf also takes 1 tick of CPU: "
+               f"T1 = 1 + sleep {sl} + 1 · T2 = 1 + loop {wk} + 1 = {wk + 2} ticks of CPU. "
+               "The OS gives each thread a time slice of at most 4 ticks (we name this policy Round Robin later, in Demo 4).")
+    lanes, core_lanes, output, total, t1_ready, slices = thread_simulate(nc, sl, wk, 4)
+    st.markdown("**Thread states over time** (one process P0; time slice up to 4 ticks)")
     render_lanes([("main (T0)" if n == "main" else n, l) for n, l in lanes.items()], STATE_COLORS)
     st.markdown("**Which thread is on each core?**")
     render_lanes([(f"Core {c}", [("T0" if x == "main" else x) for x in l]) for c, l in enumerate(core_lanes)],
                  {"T0": "#E5E7EB", "T1": "#BFDBFE", "T2": "#BBF7D0"})
     st.caption("main (T0) = the process's first thread: like a parent it creates T1 and T2, then waits for them in pthread_join (JOIN).")
     st.caption("States: RUNNING (green) · READY (yellow) · BLOCKED (blue) · BLOCKED in pthread_join (purple) · DONE (grey).")
+    with st.expander("Tick by tick: every tick numbered, with the 4-tick time slice marked", expanded=False):
+        abbr = {"RUNNING": "RUN", "READY": "RDY", "BLOCKED": "BLK", "BLOCKED (join)": "JOIN", "DONE": "·", "—": ""}
+        rows = {("main (T0)" if n == "main" else n): [abbr[x] for x in l] for n, l in lanes.items()}
+        for c, l in enumerate(core_lanes):
+            rows[f"Core {c}"] = [("T0" if x == "main" else ("—" if x == "idle" else x)) for x in l]
+        marks = [""] * total
+        for tk, c, r, kind in slices:
+            who = "T0" if r == "main" else r
+            marks[tk] = (marks[tk] + " " if marks[tk] else "") + (f"⏱ {who} out" if kind == "preempted" else f"⏱ {who} stays")
+        rows["4-tick slice"] = marks
+        grid = pd.DataFrame(rows, index=[str(i) for i in range(total)]).T
+        colors = {"RUN": "#BBF7D0", "RDY": "#FEF08A", "BLK": "#BFDBFE", "JOIN": "#E9D5FF"}
+        st.dataframe(grid.style.map(lambda v: f"background-color: {colors.get(v, '')}" if v in colors else ""), width="stretch")
+        if slices:
+            st.caption("⏱ out = the time slice ended and another thread was READY, so the OS preempted this one. "
+                       "⏱ stays = the slice ended but nobody else was READY on that core, so the same thread kept the CPU.")
+        else:
+            st.caption("No thread used a full 4-tick slice in this run.")
+    with st.expander("Who decides each parameter?", expanded=False):
+        st.markdown("""
+| Parameter | Who decides? | What it really means |
+| --- | --- | --- |
+| CPU cores | Hardware, and the OS's allocation | How many threads can execute at the same instant |
+| Time slice (4 ticks) | **OS** scheduler policy | How long a thread may keep the CPU before the OS can switch |
+| T1 sleep | **Application** developer: `sleep(3)` | Requested wait; when T1 runs again still depends on the scheduler |
+| T2 calculation | **Application**'s workload: the loop | Amount of work; how long it takes depends on CPU, load and policy |
+| Thread priority | Application **requests**, OS **decides** | e.g. `nice`, `pthread_setschedparam` |
+
+**Application defines the workload. The OS controls CPU allocation. Hardware determines execution capacity.**
+""")
     st.markdown("**Program output, in order**")
     st.code("\n".join(f"t={t:>2}  {line}" for t, line in output), language="text")
     m1, m2, m3 = st.columns(3)
@@ -1350,12 +1390,14 @@ THREAD_SLIDES = [
                 "Üç sonucu öğrencilere buldurun: T1'in beklemesi T2'yi engellemez; T1 uyanınca önce READY olur; CPU'ya hangi thread'in alınacağına scheduler karar verir.",
                 "Tek çekirdekte T1 uyandığında T2 çalışıyorsa T1 1 tık READY bekliyor. İki çekirdekte hiç beklemiyor.",
                 "Hesap süresini 1'e indirin ya da uykuyu 8'e çıkarın: 'Finished' satırlarının sırası değişiyor. Sıra garanti değil.",
-                "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin."],
+                "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin.",
+                "Round Robin'i henüz anlatmadık: burada sezgisel söyleyin, 'OS her thread'e en fazla 4 tıklık bir zaman dilimi veriyor'. Adını Demo 4'te (LM 18) koyup bu demoya geri dönün. Tick tablosundaki ⏱ işaretleri dilimin dolduğu anları gösterir."],
         "say_en": ["If time allows, measure it (preview of Week 11): with /usr/bin/time -v, real is about 3 s and user much smaller; voluntary context switches count blocking, involuntary ones count preemption. Numbers vary by machine; let students record their own.",
                    "Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
                    "On one core, if T2 is running when T1 wakes, T1 waits 1 tick in READY. On two cores it does not wait at all.",
                    "Set the calculation to 1 or the sleep to 8: the order of the 'Finished' lines changes. The order is not guaranteed.",
-                   "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU."],
+                   "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU.",
+                   "We have not taught Round Robin yet: say it intuitively here, 'the OS gives each thread a time slice of at most 4 ticks'. Name it in Demo 4 (LM 18) and come back to this demo. The ⏱ marks in the tick table show when a slice ended."],
         "qa": [("T1 bloke iken T2 çalışabilir mi?",
                 "Evet. Varsayılan ayarlarda T2, T1'in uyuduğu 3 tıkın hepsinde çalışıyor.",
                 "Can T2 run while T1 is blocked?",
@@ -1372,6 +1414,26 @@ THREAD_SLIDES = [
                 "dd her senkron yazmada diski bekleyip bloke oluyor: 327 voluntary context switch. Uykusuz thread_demo neredeyse hiç beklemiyor: CPU payı %88. Involuntary sayısı sunucudaki diğer yüke göre değişiyor.",
                 "In the real measurement, why is voluntary high for the I/O job and CPU share high for the CPU job?",
                 "dd blocks on every synchronous write while waiting for the disk: 327 voluntary context switches. thread_demo without sleep hardly waits: 88% CPU share. The involuntary count varies with other load on the server."),
+               ("Zaman dilimi (quantum) 4 ne demek?",
+                "OS bir thread'e CPU'yu en fazla 4 tick kesintisiz verir. Dilim dolduğunda başka READY thread varsa onu keser (⏱ out); yoksa aynı thread devam eder (⏱ stays). Thread daha önce bloke olur ya da biterse dilimin tamamını kullanmaz. Bu, uygulamanın sleep süresi değil, scheduler'ın politikasıdır.",
+                "What does the time slice (quantum) of 4 mean?",
+                "The OS gives a thread the CPU for at most 4 ticks without interruption. When the slice ends, it preempts the thread if another one is READY (⏱ out); otherwise the same thread continues (⏱ stays). A thread that blocks or finishes earlier does not use the whole slice. This is the scheduler's policy, not the application's sleep time."),
+               ("T2'nin hesabı 6 seçili ama T2 8 tick RUNNING görünüyor. Neden?",
+                "T2 döngüden önce ve sonra birer printf yapıyor; simülatör her printf'i 1 tick CPU sayıyor: 1 + 6 + 1 = 8. Aynı şekilde T1 de uykudan önce ve sonra 1'er tick çalışıyor.",
+                "T2's calculation is set to 6, but T2 is RUNNING for 8 ticks. Why?",
+                "T2 prints once before and once after the loop, and the simulator counts each printf as 1 tick of CPU: 1 + 6 + 1 = 8. Likewise T1 runs 1 tick before and 1 tick after its sleep."),
+               ("Tick nedir?",
+                "Simülatörün soyut zaman birimi; mutlaka 1 saniye ya da 1 milisaniye değildir. Gerçek süreleri sitedeki 🔬 gerçek ölçüm gösterir.",
+                "What is a tick?",
+                "The simulator's abstract unit of time; not necessarily one second or one millisecond. The 🔬 real measurement on the site shows real durations."),
+               ("Bu parametrelere kim karar verir?",
+                "Çekirdek sayısı donanım ve OS; zaman dilimi OS scheduler; T1'in uyku süresi uygulama (sleep(3)); T2'nin iş miktarı uygulamanın iş yükü; öncelik ise uygulama ister, OS karar verir. Uygulama işi tanımlar, OS CPU'yu dağıtır, donanım kapasiteyi belirler.",
+                "Who decides these parameters?",
+                "Core count: hardware and the OS; time slice: the OS scheduler; T1's sleep: the application (sleep(3)); T2's amount of work: the application's workload; priority: the application requests, the OS decides. The application defines the workload, the OS allocates the CPU, hardware sets the capacity."),
+               ("Bu örnek bir thread pool mu?",
+                "Hayır. Burada her iş için pthread_create ile yeni thread yaratılıyor ve iş bitince thread sona eriyor. Thread pool'da sabit sayıda thread baştan yaratılır ve kuyruktan sıradaki işi alarak tekrar tekrar kullanılır (Week 4). Real-World Systems'teki bilet örneğindeki worker pool bir thread pool'dur.",
+                "Is this example a thread pool?",
+                "No. Here each job gets a new thread from pthread_create, and the thread ends when the job is done. A thread pool creates a fixed set of threads up front and reuses them, each taking the next job from a queue (Week 4). The worker pool in the Real-World ticket example is a thread pool."),
                ("real ≫ user + sys her zaman I/O-bound demek mi?",
                 "Hayır. Sadece programın beklediğini gösterir. Bekleme I/O olabilir, ama kilit, sleep veya CPU sırası beklemek de olabilir. Bizim thread_demo %5 CPU payıyla bekliyor, ama sebebi I/O değil sleep(3).",
                 "Does real ≫ user + sys always mean I/O-bound?",
@@ -2274,15 +2336,17 @@ SECTOR_SLIDES = [
         <br><b>Predict:</b> how does the average response change with 1, 2 and 4 cores? What does Round Robin (quantum 1 ms) change?
         """,
         "layers": ["app", "os", "run", "res"],
-        "terms": ["FCFS", "RR", "Quantum"],
+        "terms": ["FCFS", "RR", "Quantum", "Thread pool"],
         "code": (("app", "Application code · C", APP_TICKET_SCHED), ("os", "OS kernel · pseudocode", OS_TICKET_SCHED)),
         "demo": "ticket_sched",
         "say": ["FCFS'te ortalama yanıt 1 çekirdekte 7, 2'de 3, 4'te 1 ms. Çekirdek arttıkça patlama daha çabuk eriyor.",
                 "Round Robin (q=1) tek çekirdekte ilk yanıtı 7'den 3,5 ms'ye indiriyor ama ortalama bitişi 9'dan 12,5'e çıkarıyor: herkes erken başlıyor, geç bitiyor.",
-                "Aynı anda çalışan worker sayısı çekirdek sayısına eşit; bu da önceki slayttaki yarışın ihtimalini artırıyor."],
+                "Aynı anda çalışan worker sayısı çekirdek sayısına eşit; bu da önceki slayttaki yarışın ihtimalini artırıyor.",
+                "Buradaki worker'lar bir thread pool: Week 4'te gördüğümüz gibi baştan sabit sayıda yaratılıp her istek için yeniden kullanılıyorlar; istekler bir kuyrukta bekliyor (Week 5'teki producer-consumer)."],
         "say_en": ["With FCFS the average response is 7 ms on 1 core, 3 on 2 and 1 on 4. More cores melt the burst faster.",
                    "Round Robin (q=1) on one core lowers the first response from 7 to 3.5 ms but raises the average completion from 9 to 12.5: everyone starts early and finishes late.",
-                   "The number of workers running at the same instant equals the number of cores, which makes the race from the previous slide more likely."],
+                   "The number of workers running at the same instant equals the number of cores, which makes the race from the previous slide more likely.",
+                   "These workers are a thread pool: as in Week 4, a fixed set is created up front and reused for every request; requests wait in a queue (producer-consumer from Week 5)."],
         "qa": [("1, 2 ve 4 çekirdekte ortalama yanıt nedir (FCFS)?",
                 "7, 3 ve 1 ms. Son istek 16, 8 ve 4 ms'de bitiyor.",
                 "What is the average response on 1, 2 and 4 cores (FCFS)?",
