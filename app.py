@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import zipfile
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ import streamlit as st
 
 OSTEP_URL = "https://github.com/remzi-arpacidusseau/ostep-homework/archive/refs/heads/master.zip"
 BASE_DIR = Path(__file__).parent
+ASSETS = BASE_DIR / "assets"
 # Store the downloaded OSTEP backend in /tmp on Streamlit Cloud.
 # This avoids cross-device move errors with Streamlit's mounted source tree.
 OSTEP_DIR = Path(tempfile.gettempdir()) / "ostep-homework"
@@ -22,14 +24,7 @@ CSS = """
 <style>
 .block-container {padding-top: 1.7rem; padding-bottom: 2rem; max-width: 1200px;}
 .big-card {border: 1px solid #E5E7EB; border-radius: 18px; padding: 20px; background: #F8FAFC; margin: 8px 0 16px 0;}
-.good {color:#047857; font-weight:700;}
-.warn {color:#B45309; font-weight:700;}
-.bad {color:#B91C1C; font-weight:700;}
 .small {font-size: 0.92rem; color:#4B5563;}
-.codebox {font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#111827; color:#F9FAFB; padding:12px; border-radius:12px; white-space:pre-wrap; font-size:0.88rem;}
-.state-run {background:#DCFCE7; color:#166534; padding:4px 8px; border-radius:10px; font-weight:700;}
-.state-ready {background:#FEF3C7; color:#92400E; padding:4px 8px; border-radius:10px; font-weight:700;}
-.state-wait {background:#DBEAFE; color:#1E40AF; padding:4px 8px; border-radius:10px; font-weight:700;}
 .slide-card {border:1px solid #CBD5E1; border-radius:24px; padding:28px 32px; background:white; margin:18px 0 14px 0; box-shadow:0 6px 24px rgba(15,23,42,.06);}
 .slide-kicker {font-size:.82rem; letter-spacing:.08em; text-transform:uppercase; color:#64748B; font-weight:700;}
 .slide-title {font-size:2rem; line-height:1.15; font-weight:800; margin:.35rem 0 1rem 0; color:#0F172A;}
@@ -37,43 +32,53 @@ CSS = """
 .flow {font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#F8FAFC; border:1px dashed #94A3B8; padding:14px 18px; border-radius:14px; font-weight:700; text-align:center; margin:12px 0;}
 .demo-label {display:inline-block;background:#0F172A;color:#fff;padding:5px 10px;border-radius:999px;font-size:.78rem;font-weight:700;margin-bottom:6px;}
 .nav-caption {text-align:center;color:#64748B;font-size:.9rem;margin-top:.35rem;}
+.layers {display:flex; gap:6px; flex-wrap:wrap; margin:0 0 4px 0;}
+.layer {padding:4px 12px; border-radius:999px; font-size:.75rem; font-weight:700; letter-spacing:.04em; border:1px solid #CBD5E1; color:#94A3B8; background:#fff;}
+.layer.on.app {background:#2563EB; color:#fff; border-color:#2563EB;}
+.layer.on.os {background:#0D9488; color:#fff; border-color:#0D9488;}
+.layer.on.run {background:#D97706; color:#fff; border-color:#D97706;}
+.layer.on.res {background:#6D4AA8; color:#fff; border-color:#6D4AA8;}
+.code-label {font-size:.8rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; margin:6px 0 2px 0;}
+.code-label.app {color:#2563EB;}
+.code-label.os {color:#0D9488;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
 
-def ensure_ostep():
-    """Download OSTEP homework if it is not already present."""
+# ---------------------------------------------------------------------------
+# OSTEP backend
+# ---------------------------------------------------------------------------
+@st.cache_resource(show_spinner="Downloading the OSTEP simulators (first run only)...")
+def _download_ostep():
+    """Download OSTEP once per server. cache_resource also serialises concurrent
+    first clicks, so two students cannot delete each other's half-copied folder."""
     marker = OSTEP_DIR / "cpu-intro" / "process-run.py"
     if marker.exists():
-        return True, "OSTEP repository is available locally."
+        return True
+    if OSTEP_DIR.exists():
+        shutil.rmtree(OSTEP_DIR, ignore_errors=True)
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        zip_path = td_path / "ostep.zip"
+        urllib.request.urlretrieve(OSTEP_URL, zip_path)
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(td_path)
+        extracted = td_path / "ostep-homework-master"
+        if not extracted.exists():
+            raise RuntimeError("OSTEP archive was downloaded, but its extracted folder was not found.")
+        # copytree works even when source and destination are on different mounts.
+        shutil.copytree(extracted, OSTEP_DIR)
+    if not marker.exists():
+        raise RuntimeError("OSTEP repository was copied, but process-run.py is missing.")
+    return True
 
+
+def ensure_ostep():
     try:
-        # Clean up any incomplete prior download.
-        if OSTEP_DIR.exists():
-            shutil.rmtree(OSTEP_DIR, ignore_errors=True)
-
-        with tempfile.TemporaryDirectory() as td:
-            td_path = Path(td)
-            zip_path = td_path / "ostep.zip"
-            urllib.request.urlretrieve(OSTEP_URL, zip_path)
-
-            with zipfile.ZipFile(zip_path, "r") as z:
-                z.extractall(td_path)
-
-            extracted = td_path / "ostep-homework-master"
-            if not extracted.exists():
-                return False, "OSTEP archive was downloaded, but its extracted folder was not found."
-
-            # copytree works safely even when source and destination are on
-            # different filesystems/mounts.
-            shutil.copytree(extracted, OSTEP_DIR)
-
-        if not marker.exists():
-            return False, "OSTEP repository was copied, but process-run.py is missing."
-
-        return True, "OSTEP repository downloaded successfully."
-    except Exception as e:
+        _download_ostep()
+        return True, "OSTEP repository is available."
+    except Exception as e:  # not cached, so the next click retries
         return False, f"Could not download OSTEP repository: {e}"
 
 
@@ -95,7 +100,8 @@ def run_ostep(folder, script, args):
 
 
 def output_box(text):
-    st.markdown(f"<div class='codebox'>{text}</div>", unsafe_allow_html=True)
+    # st.code keeps column alignment and never interprets `$...$` as math.
+    st.code(text or "(no output)", language="text")
 
 
 def scenario_card(title, observe, explain):
@@ -108,6 +114,9 @@ def scenario_card(title, observe, explain):
     """, unsafe_allow_html=True)
 
 
+# ---------------------------------------------------------------------------
+# Scheduling visualizer
+# ---------------------------------------------------------------------------
 def gantt_fcfs(jobs):
     t=0; rows=[]; metrics=[]
     for name, arrival, burst in sorted(jobs, key=lambda x:(x[1],x[0])):
@@ -164,59 +173,58 @@ def render_gantt(rows):
     st.markdown(html, unsafe_allow_html=True)
 
 
-
-def lecture_slide(kicker, title, body_html, flow=None):
-    flow_html = f"<div class='flow'>{flow}</div>" if flow else ""
-    st.markdown(
-        f"""
-        <div class='slide-card'>
-          <div class='slide-kicker'>{kicker}</div>
-          <div class='slide-title'>{title}</div>
-          <div class='slide-body'>{body_html}</div>
-          {flow_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-def render_process_demo(key_prefix="lecture"):
+# ---------------------------------------------------------------------------
+# Reusable demos (used by Lecture Mode and by the numbered tabs)
+# ---------------------------------------------------------------------------
+def render_process_demo(key_prefix, p0=(1, 0), p1=(4, 100), switch="SWITCH_ON_IO", show_cmd_open=False):
     c1,c2,c3,c4 = st.columns(4)
-    with c1: p0_len = st.number_input("P0 instructions", 1, 20, 5, key=f"{key_prefix}_p0len")
-    with c2: p0_cpu = st.slider("P0 CPU probability", 0, 100, 100, key=f"{key_prefix}_p0cpu")
-    with c3: p1_len = st.number_input("P1 instructions", 1, 20, 5, key=f"{key_prefix}_p1len")
-    with c4: p1_cpu = st.slider("P1 CPU probability", 0, 100, 0, key=f"{key_prefix}_p1cpu")
-    switch = st.selectbox("Switch behavior", ["SWITCH_ON_IO", "SWITCH_ON_END"], key=f"{key_prefix}_switch")
-    cmd_args=["-l", f"{p0_len}:{p0_cpu},{p1_len}:{p1_cpu}", "-S", switch, "-c", "-p"]
-    with st.expander("Show the OSTEP command"):
+    with c1: p0_len = st.number_input("P0 instructions", 1, 20, p0[0], key=f"{key_prefix}_p0len")
+    with c2: p0_cpu = st.slider("P0 CPU probability", 0, 100, p0[1], key=f"{key_prefix}_p0cpu")
+    with c3: p1_len = st.number_input("P1 instructions", 1, 20, p1[0], key=f"{key_prefix}_p1len")
+    with c4: p1_cpu = st.slider("P1 CPU probability", 0, 100, p1[1], key=f"{key_prefix}_p1cpu")
+    options = ["SWITCH_ON_IO", "SWITCH_ON_END"]
+    sw = st.selectbox("Switch behavior", options, index=options.index(switch), key=f"{key_prefix}_switch")
+    cmd_args=["-l", f"{p0_len}:{p0_cpu},{p1_len}:{p1_cpu}", "-S", sw, "-c", "-p"]
+    with st.expander("Show the OSTEP command", expanded=show_cmd_open):
         st.code("python cpu-intro/process-run.py " + " ".join(cmd_args), language="bash")
     if st.button("▶ Run process-state simulation", type="primary", key=f"{key_prefix}_run_process"):
         ok,msg,out=run_ostep("cpu-intro", "process-run.py", cmd_args)
-        st.info(msg)
+        (st.success if ok else st.error)(msg)
         output_box(out)
+        st.caption("OSTEP prints BLOCKED for the WAITING state. An asterisk (*) marks the step where an I/O completes.")
 
-def render_scheduling_demo(key_prefix="lecture"):
-    jobs=[]
+
+DEFAULT_JOBS = [("P1",0,8),("P2",1,4),("P3",2,2),("P4",3,5)]
+
+def render_scheduling_demo(key_prefix, jobs=None, n_jobs=4, policy="FCFS", quantum=2):
+    jobs = list(jobs or DEFAULT_JOBS)
+    jobs += DEFAULT_JOBS[len(jobs):]
+    n = st.radio("Number of processes", [2, 3, 4], index=[2, 3, 4].index(n_jobs), horizontal=True, key=f"{key_prefix}_n")
+    chosen=[]
     cols=st.columns(4)
-    defaults=[("P1",0,8),("P2",1,4),("P3",2,2),("P4",3,5)]
-    for idx,(n,a,b) in enumerate(defaults):
+    for idx,(name,a,b) in enumerate(jobs[:4]):
         with cols[idx]:
-            st.markdown(f"**{n}**")
-            ar=st.number_input(f"{n} arrival",0,20,a,key=f"{key_prefix}_ar{n}")
-            bu=st.number_input(f"{n} burst",1,30,b,key=f"{key_prefix}_bu{n}")
-            jobs.append((n,ar,bu))
-    policy=st.radio("Policy", ["FCFS", "SJF", "Round Robin"], horizontal=True, key=f"{key_prefix}_policy")
-    quantum=st.slider("Time Quantum (Round Robin)",1,10,2,key=f"{key_prefix}_quantum")
+            if idx < n:
+                st.markdown(f"**{name}**")
+                ar=st.number_input(f"{name} arrival",0,20,a,key=f"{key_prefix}_ar{name}")
+                bu=st.number_input(f"{name} burst",1,30,b,key=f"{key_prefix}_bu{name}")
+                chosen.append((name,ar,bu))
+    pols = ["FCFS", "SJF", "Round Robin"]
+    pol=st.radio("Policy", pols, index=pols.index(policy), horizontal=True, key=f"{key_prefix}_policy")
+    q=st.slider("Time Quantum (Round Robin)",1,10,quantum,key=f"{key_prefix}_quantum")
     if st.button("▶ Run scheduling simulation", type="primary", key=f"{key_prefix}_run_sched"):
-        if policy=="FCFS": rows,metrics=gantt_fcfs(jobs)
-        elif policy=="SJF": rows,metrics=gantt_sjf(jobs)
-        else: rows,metrics=gantt_rr(jobs, quantum)
+        if pol=="FCFS": rows,metrics=gantt_fcfs(chosen)
+        elif pol=="SJF": rows,metrics=gantt_sjf(chosen)
+        else: rows,metrics=gantt_rr(chosen, q)
         render_gantt(rows)
-        st.dataframe(metrics, use_container_width=True)
-        c1,c2=st.columns(2)
-        c1.metric("Average waiting time", round(metrics["Waiting"].mean(),2))
-        c2.metric("Average turnaround time", round(metrics["Turnaround"].mean(),2))
+        st.dataframe(metrics, hide_index=True, width="stretch")
+        c1,c2,c3=st.columns(3)
+        c1.metric("Average waiting time", f"{metrics['Waiting'].mean():.2f}")
+        c2.metric("Average turnaround time", f"{metrics['Turnaround'].mean():.2f}")
+        c3.metric("Average response time", f"{metrics['Response'].mean():.2f}")
 
-def render_thread_demo(key_prefix="lecture"):
+
+def render_thread_demo(key_prefix, backend_open=False):
     initial=st.number_input("Shared counter initial value", 0, 100, 5, key=f"{key_prefix}_counter")
     mode=st.radio("Execution pattern", ["Safe execution", "Interleaved race"], horizontal=True, key=f"{key_prefix}_mode")
     if mode=="Safe execution":
@@ -237,14 +245,517 @@ def render_thread_demo(key_prefix="lecture"):
     else:
         st.error("Lost update: both threads used the same old value. This is a data race.")
         st.caption("Both threads read the same old value before either STORE completes, so one increment is overwritten.")
-    with st.expander("Run the real OSTEP x86.py backend"):
+    with st.expander("Run the real OSTEP x86.py backend", expanded=backend_open):
+        st.caption("Two threads run threads-intro/simple-race.s. The counter starts at 0, so the correct result is 2. "
+                   "The final value is the leftmost number on the last line.")
         interval=st.slider("Interrupt interval (-i)",1,10,1,key=f"{key_prefix}_interval")
         cmd_args=["-p","simple-race.s","-t","2","-i",str(interval),"-M","2000","-c"]
         st.code("python threads-intro/x86.py " + " ".join(cmd_args), language="bash")
         if st.button("▶ Run OSTEP thread simulation", key=f"{key_prefix}_run_thread"):
             ok,msg,out=run_ostep("threads-intro", "x86.py", cmd_args)
-            st.info(msg)
+            (st.success if ok else st.error)(msg)
             output_box(out)
+            if ok:
+                lines=[l for l in out.splitlines() if l.strip() and l.strip()[0].isdigit()]
+                if lines:
+                    val=lines[-1].split()[0]
+                    (st.success if val=="2" else st.error)(f"Final counter value: {val} (expected 2)")
+
+
+# ---------------------------------------------------------------------------
+# Lecture Mode content
+# ---------------------------------------------------------------------------
+@st.cache_data
+def board_manifest():
+    path = ASSETS / "board" / "manifest.json"
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {f"{e['code']}_{e['board']}": e for e in data}
+
+
+def render_board(board_keys, say):
+    """Instructor-only panel: what to draw on the board and what to say."""
+    if not board_keys and not say:
+        return
+    with st.expander("📝 Eğitmen · tahtaya çizilecekler ve anlatım", expanded=False):
+        if say:
+            st.markdown("**Söyleyin**")
+            for s in say:
+                st.markdown(f"- {s}")
+        man = board_manifest()
+        for key in board_keys:
+            e = man.get(key)
+            if not e:
+                continue
+            part = f" ({e['board']}/{e['boards']})" if e["boards"] > 1 else ""
+            st.markdown(f"**Tahta {e['code']}{part} · {e['title']}** · slayt {e['slides']}")
+            img = ASSETS / "board" / e["img"]
+            if img.exists():
+                st.image(str(img), width="stretch")
+            st.markdown("**Çizim ve anlatım sırası**")
+            st.markdown("\n".join(f"{i}. {c}" for i, c in enumerate(e["caps"], 1)))
+        codes = sorted({k.split("_")[0] for k in board_keys})
+        for code in codes:
+            vid = ASSETS / "video" / f"{code}.mp4"
+            if vid.exists() and st.toggle(f"▶ {code} tahta videosunu göster", key=f"vid_{code}_{'_'.join(board_keys)}"):
+                st.video(str(vid))
+
+
+def layer_pills(active):
+    if not active:
+        return
+    names = [("app", "APPLICATION"), ("os", "OS KERNEL"), ("run", "RUN ON SITE"), ("res", "RESULT")]
+    html = "<div class='layers'>" + "".join(
+        f"<span class='layer {k}{' on' if k in active else ''}'>{n}</span>" for k, n in names) + "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def lecture_slide(kicker, title, body_html, flow=None):
+    flow_html = f"<div class='flow'>{flow}</div>" if flow else ""
+    st.markdown(
+        f"""
+        <div class='slide-card'>
+          <div class='slide-kicker'>{kicker}</div>
+          <div class='slide-title'>{title}</div>
+          <div class='slide-body'>{body_html}</div>
+          {flow_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def code_pair(left, right):
+    """Show application code next to OS pseudocode. Each item: (kind, label, code)."""
+    cols = st.columns(len([c for c in (left, right) if c]))
+    for col, item in zip(cols, [c for c in (left, right) if c]):
+        kind, label, code = item
+        with col:
+            st.markdown(f"<div class='code-label {kind}'>{label}</div>", unsafe_allow_html=True)
+            st.code(code, language="c")
+
+
+APP_P0 = """int main(void) {
+    char buffer[4096];
+    int fd = open("data.txt", O_RDONLY);
+
+    read(fd, buffer, sizeof buffer); // I/O
+    close(fd);
+    return 0;
+}"""
+APP_P1 = """int main(void) {
+    volatile long result = 0;
+
+    for (long i = 0; i < 100000000; i++)
+        result += i;              // CPU work
+
+    return 0;
+}"""
+OS_SWITCH_IO = """// SWITCH_ON_IO (pseudocode)
+if (current_blocks_for_io()) {
+    current->state = BLOCKED;
+    next = ready_queue_pop();
+    context_switch(next);   // CPU stays busy
+}
+on_io_complete(p):
+    p->state = READY;       // back in the queue"""
+OS_SWITCH_END = """// SWITCH_ON_END (OSTEP teaching policy)
+if (current_blocks_for_io()) {
+    current->state = BLOCKED;
+    cpu_idle_until_io_done(); // no switch
+}
+// switch only when current FINISHES
+// (not typical modern OS behavior)"""
+APP_THREADS = """int counter = 5;               // shared data
+
+void *worker(void *arg) {
+    counter++;                 // LOAD, ADD, STORE
+    return NULL;
+}
+
+int main(void) {
+    pthread_t t1, t2;
+    pthread_create(&t1, NULL, worker, NULL);
+    pthread_create(&t2, NULL, worker, NULL);
+    pthread_join(t1, NULL); pthread_join(t2, NULL);
+    printf("%d\\n", counter);   // expect 7
+}"""
+OS_TIMER = """on_timer_interrupt():
+    save_registers(current);   // T1's %eax = 5
+    current->state = READY;
+    ready_queue_push(current);
+
+    next = pick_next();        // T2
+    restore_registers(next);
+    next->state = RUNNING;
+    return_to_user(next);"""
+APP_MUTEX = """pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+
+void *worker(void *arg) {
+    pthread_mutex_lock(&m);
+    counter++;               // critical section
+    pthread_mutex_unlock(&m);
+    return NULL;
+}"""
+OS_MUTEX = """mutex_lock(m):
+    if (m->owner != NULL) {
+        current->state = WAITING;
+        schedule();          // run someone else
+    }
+    m->owner = current;
+
+mutex_unlock(m): wake_one_waiter(m);"""
+APP_TWO_JOBS = """P1: generate_report();   // arrives 0, 10 ms CPU
+P2: handle_request();    // arrives 3,  2 ms CPU"""
+OS_THREE_POLICIES = """// FCFS (non-preemptive)
+on_arrival(p):  ready_queue_push(p);    // never interrupts
+
+// Round Robin, quantum q
+on_timer_tick(): if (++current->used == q) preempt(current);
+
+// SRTF (preemptive shortest remaining time)
+on_arrival(p):
+    ready_queue_push(p);
+    if (p->remaining < current->remaining) preempt(current);"""
+APP_THREE_JOBS = """P1: encode_video();     // 12 ms
+P2: make_thumbnail();   //  3 ms
+P3: write_log();        //  2 ms
+// all READY at t = 0"""
+OS_PICK_NEXT = """Process *pick_next(void) {
+  switch (policy) {
+  case FCFS: return earliest_arrival(ready_queue);
+  case SJF:  return shortest_burst(ready_queue); // needs an estimate!
+  case RR:   return ready_queue_head();          // + preempt after quantum
+  }
+}"""
+OS_TICK = """on_timer_tick():
+    current->used++;
+    if (current->used == QUANTUM) {
+        if (ready_queue_empty())
+            current->used = 0;   // keep running, no switch
+        else
+            preempt(current);    // to the back of the queue
+    }
+
+on_exit(p):  schedule();       // finished early: switch now"""
+
+SLIDES = [
+    {
+        "kicker": "Slide 1 · What is OSTEP?",
+        "title": "OSTEP: the simulation engine behind this website",
+        "body": """
+        <b>OSTEP</b> = <i>Operating Systems: Three Easy Pieces</i> by Remzi and Andrea Arpaci-Dusseau (UW–Madison),
+        a free textbook organised around <b>virtualization, concurrency and persistence</b>.
+        Its homework folder contains small Python simulators such as <code>process-run.py</code> and <code>x86.py</code>.
+        <br><br>
+        They <b>model</b> OS behavior step by step. They do <b>not</b> run or change a real kernel.
+        Instead of the simulator's code, we will look at <b>application code</b> and <b>OS kernel pseudocode</b>.
+        """,
+        "flow": "Browser → OS Exercise Lab → OSTEP simulator → output on the projector",
+        "say": ["OSTEP ücretsiz bir işletim sistemleri ders kitabı; ödevlerindeki simülatörleri motor olarak kullanıyoruz.",
+                "Simülatör gerçek kernel değil, davranışı modelliyor. Simülatörün kodunu göstermeyeceğiz."],
+    },
+    {
+        "kicker": "Slide 2 · Four layers",
+        "title": "Every live demo has four layers",
+        "body": """
+        <b>1 · Application code</b> (user space): what a developer writes — read(), loops, threads, locks.<br>
+        <b>2 · OS kernel</b> (kernel space): scheduler, process states, context switch.<br>
+        <b>3 · Run on site</b>: the workload and policy we feed to the simulator.<br>
+        <b>4 · Observed result</b>: total time, CPU utilization, waiting time, final value.
+        <br><br>
+        <b>Applications define the work. The operating system manages the execution.</b>
+        """,
+        "layers": ["app", "os", "run", "res"],
+        "say": ["Her demoda bu dört katmanı sırayla gezeceğiz. Üstteki renkli etiketler hangi katmanda olduğumuzu gösterir."],
+    },
+    {
+        "kicker": "Slide 3 · Process states",
+        "title": "A process does not continuously own the CPU",
+        "body": """
+        <b>READY</b>: can run, waits for a core. <b>RUNNING</b>: executes instructions.
+        <b>WAITING / BLOCKED</b>: waits for I/O or a lock — not using the CPU and not in the ready queue.
+        <br><br>
+        When the event completes, the process returns to <b>READY</b>, not directly to RUNNING.
+        """,
+        "flow": "READY → RUNNING → WAITING → READY   (or → FINISHED)",
+        "board": ["V01_1"],
+        "say": ["READY: çalışabilir ama CPU bekliyor. WAITING: CPU verseniz de çalışamaz, bir olay bekliyor."],
+    },
+    {
+        "kicker": "Slide 4 · Demo 1 · Layer 1",
+        "title": "Meet our two applications",
+        "body": """
+        P0 reads a file (<b>I/O-bound</b>). P1 only computes (<b>CPU-bound</b>). One CPU core.
+        <br>In the simulator: <b>P0 = 1 instruction, 100% I/O</b> · <b>P1 = 4 instructions, 100% CPU</b>.
+        <br><br><b>Neither program says WHEN it runs.</b> That decision belongs to the operating system.
+        """,
+        "layers": ["app"],
+        "code": (("app", "P0 · I/O-bound application", APP_P0), ("app", "P1 · CPU-bound application", APP_P1)),
+        "say": ["Sorun: P0 I/O başlatıp beklemeye geçince CPU boş kalmak zorunda mı?",
+                "Gerçek read() her zaman bloke olmaz; veri önbellekteyse hemen döner. C satır sayısı OSTEP komut sayısına birebir karşılık gelmez."],
+    },
+    {
+        "kicker": "Slide 5 · Demo 1 · Layer 2",
+        "title": "SWITCH_ON_IO vs SWITCH_ON_END",
+        "body": """
+        Two switch policies of the <b>OSTEP simulator</b> — not Linux or Windows scheduler names.
+        <br><b>SWITCH_ON_IO</b>: when the running process starts I/O, another READY process may run → CPU–I/O overlap.
+        <br><b>SWITCH_ON_END</b>: no switch until the running process finishes → the CPU idles during I/O.
+        <br><br><i>The code below is pseudocode that explains the behavior, not real kernel source.</i>
+        """,
+        "layers": ["os"],
+        "code": (("os", "SWITCH_ON_IO · OS pseudocode", OS_SWITCH_IO), ("os", "SWITCH_ON_END · OSTEP policy", OS_SWITCH_END)),
+        "say": ["SWITCH_ON_END non-preemptive ile aynı şey değil: non-preemptive bir scheduler bile bloke olan thread'in yerine READY bir thread çalıştırabilir.",
+                "SWITCH_ON_IO da preemption sayılmaz: process I/O yüzünden devam edemediği için CPU'yu bırakır."],
+    },
+    {
+        "kicker": "Slide 6 · LIVE DEMO 1 · Layer 3",
+        "title": "Run A with SWITCH_ON_IO, then Run B with SWITCH_ON_END",
+        "body": """
+        Defaults are already set: <b>P0 1 / 0%</b>, <b>P1 4 / 100%</b>, <b>SWITCH_ON_IO</b>.
+        <br><b>Predict first:</b> while P0 waits for I/O, who uses the CPU?
+        <br>Then change <b>only</b> Switch behavior to <b>SWITCH_ON_END</b> and run again.
+        """,
+        "layers": ["run"],
+        "demo": "process",
+        "board": ["V01_2"],
+        "say": ["Run A: zaman 2–5 arası P0 BLOCKED, ama CPU sütununda 1 var. CPU boş değil, P1'i çalıştırıyor.",
+                "Run B: yalnız switch behavior'u değiştirin. Toplam süre 7'den 11'e çıkar."],
+    },
+    {
+        "kicker": "Slide 7 · Demo 1 · Layer 4",
+        "title": "Same work, different switch decision",
+        "body": """
+        <table style='width:100%;border-collapse:collapse;font-size:1.05rem'>
+        <tr style='background:#F1F5F9'><th style='text-align:left;padding:6px'></th><th style='text-align:left'>SWITCH_ON_IO</th><th style='text-align:left'>SWITCH_ON_END</th></tr>
+        <tr><td style='padding:6px'><b>Total time</b></td><td>7</td><td>11</td></tr>
+        <tr><td style='padding:6px'><b>CPU utilization</b></td><td>85.71%</td><td>54.55%</td></tr></table>
+        <br><b>Q1:</b> The running process cannot continue? → It becomes BLOCKED; the OS can run another READY process.
+        <br><b>Q2:</b> Several processes are READY? → <b>The CPU scheduler must decide which one runs next.</b>
+        """,
+        "layers": ["res"],
+        "say": ["İki senaryoda aynı iş yapılıyor. İkincisi daha uzun, çünkü I/O beklemesi ile P1'in CPU işi örtüşmüyor.",
+                "İkinci soru bugünün konusu: FCFS, SJF, Round Robin, Priority, MLFQ."],
+    },
+    {
+        "kicker": "Slide 8 · Concurrency vs parallelism",
+        "title": "Overlapping progress is not the same as simultaneous execution",
+        "body": """
+        <b>One core:</b> A and B alternate — both make progress, never at the same instant (concurrency).
+        <br><b>Two cores:</b> A and B can execute in the same time column (parallelism).
+        <br><br>Threads of one process share memory, so even one core can corrupt shared data.
+        """,
+        "flow": "Concurrency = overlapping progress   ·   Parallelism = same instant",
+        "board": ["V02_1"],
+        "say": ["Vaka 1–2 üst çizelge, vaka 3–4 alt çizelge. Process mi thread mi olduğu çizelgeyi değiştirmez."],
+    },
+    {
+        "kicker": "Slide 9 · Demo 2 · Layers 1–2",
+        "title": "Two threads, one counter — and the timer interrupt",
+        "body": """
+        <b>counter++</b> is one line of C but three machine steps: <b>LOAD → ADD → STORE</b>.
+        The OS timer may switch threads between any two steps. <b>The scheduler does not know about your counter.</b>
+        """,
+        "layers": ["app", "os"],
+        "code": (("app", "Application code · user space", APP_THREADS), ("os", "OS kernel · pseudocode", OS_TIMER)),
+        "say": ["Kod tek başına doğru. Sorun, iki thread'in adımları araya girince çıkıyor. Bu tek çekirdekte bile olur."],
+    },
+    {
+        "kicker": "Slide 10 · LIVE DEMO 2 · Layers 3–4",
+        "title": "Two threads + one shared variable = possible data race",
+        "body": """
+        <b>Predict:</b> counter = 5, both threads increment once. Is the result 6 or 7?
+        <br>Step 1 · <b>Safe execution</b> → 7. Step 2 · <b>Interleaved race</b> → 6.
+        <br>Step 3 · real OSTEP <code>x86.py</code>: interrupt interval <b>1 → 1</b>, <b>2 → 1</b>, <b>3 → 2</b> (expected 2).
+        """,
+        "layers": ["run", "res"],
+        "demo": "thread",
+        "board": ["V03_1", "V03_2"],
+        "say": ["Program üç komut: oku, artır, yaz. Kesme bu üçünün arasına düşerse güncelleme kaybolur.",
+                "Kod hiç değişmedi, sadece kesme zamanı değişti. Doğruluğu zamanlamaya bırakan program bozuktur."],
+    },
+    {
+        "kicker": "Slide 11 · Demo 2 · The fix",
+        "title": "The fix lives in the application: a mutex",
+        "body": """
+        The OS puts a thread that cannot get the lock into <b>WAITING</b> and wakes it on unlock.
+        <b>Preemption does not release a mutex</b>: a preempted lock holder keeps it, so the result is always 7.
+        """,
+        "flow": "Scheduler: WHO runs now?   ·   Mutex: WHO may touch the shared data?",
+        "layers": ["app", "os", "res"],
+        "code": (("app", "Application code · with a mutex", APP_MUTEX), ("os", "OS kernel · pseudocode", OS_MUTEX)),
+        "say": ["Linux'ta kilit bekleyen thread futex ile uyutulur. Scheduling ≠ synchronization."],
+    },
+    {
+        "kicker": "Slide 12 · Preemption · all four layers",
+        "title": "Same two jobs, three OS policies",
+        "body": """
+        P1 arrives at 0 (10 ms), P2 arrives at 3 (2 ms). Defaults: <b>2 processes</b>, FCFS.
+        Run <b>FCFS</b> (P2 waits 7), then <b>Round Robin, quantum 2</b> (P2 waits 1).
+        SRTF is not on the site: P1 0–3, P2 3–5, P1 5–12 (P2 waits 0).
+        """,
+        "flow": "Preemption is a capability. The algorithm decides WHEN to use it.",
+        "layers": ["app", "os", "run", "res"],
+        "code": (("app", "Applications (unchanged)", APP_TWO_JOBS), ("os", "OS kernel · three policies (pseudocode)", OS_THREE_POLICIES)),
+        "demo": "schedule",
+        "demo_args": {"jobs": [("P1", 0, 10), ("P2", 3, 2), ("P3", 20, 1), ("P4", 20, 1)], "n_jobs": 2, "policy": "FCFS", "quantum": 2},
+        "board": ["V04_1"],
+        "say": ["FCFS: P2 zaman 3'te geldi ama P1 bitene kadar bekliyor.",
+                "RR q=2: zaman 2'de P2 henüz yok, P1 devam eder; zaman 4'te sıra P2'ye geçer."],
+    },
+    {
+        "kicker": "Slide 13 · FCFS vs SJF",
+        "title": "Same 14 ms of work, different order",
+        "body": """
+        P1 = 8, P2 = 4, P3 = 2 ms, all at t = 0. <b>FCFS</b>: average wait 6.67 ms (convoy effect).
+        <b>SJF</b>: average wait 2.67 ms — but SJF must know burst lengths in advance.
+        """,
+        "demo": "schedule",
+        "demo_args": {"jobs": [("P1", 0, 8), ("P2", 0, 4), ("P3", 0, 2), ("P4", 20, 1)], "n_jobs": 3, "policy": "FCFS", "quantum": 2},
+        "board": ["V05_1"],
+        "say": ["Toplam iş yine 14 ms. Değişen sadece sıra. Gerçek OS iş süresini bilmez, geçmişten tahmin eder."],
+    },
+    {
+        "kicker": "Slide 14 · SRTF (board only)",
+        "title": "Shortest Remaining Time First: decide again at every arrival",
+        "body": """
+        P1 arrives at 0 (8 ms), P2 at 1 (4 ms). At t = 1: P1 has <b>7</b> left, P2 needs <b>4</b> → preempt P1.
+        <br>Timeline: P1 0–1 · P2 1–5 · P1 5–12. Waiting: P1 4, P2 0.
+        """,
+        "flow": "compare remaining times at every arrival",
+        "board": ["V06_1"],
+        "say": ["SRTF sitede yok; tahtaya çizin. Sürekli kısa iş gelirse uzun iş aç kalabilir."],
+    },
+    {
+        "kicker": "Slide 15 · LIVE DEMO 3 · all four layers",
+        "title": "One workload, three scheduling policies",
+        "body": """
+        P1 = 12, P2 = 3, P3 = 2 ms, all at t = 0. <b>Predict:</b> which policy finishes P2 and P3 earliest?
+        <br>Expected average waiting: <b>FCFS 9.00</b> · <b>SJF 2.33</b> · <b>RR q=4 5.33</b> ms.
+        """,
+        "layers": ["app", "os", "run", "res"],
+        "code": (("app", "Applications (unchanged)", APP_THREE_JOBS), ("os", "OS kernel · pick_next() (pseudocode)", OS_PICK_NEXT)),
+        "demo": "schedule",
+        "demo_args": {"jobs": [("P1", 0, 12), ("P2", 0, 3), ("P3", 0, 2), ("P4", 20, 1)], "n_jobs": 3, "policy": "FCFS", "quantum": 4},
+        "board": ["V08_1"],
+        "say": ["Cevap SJF: P3 zaman 2'de, P2 zaman 5'te biter. Ama SJF iş sürelerini önceden bilmeyi varsayar."],
+    },
+    {
+        "kicker": "Slide 16 · LIVE DEMO 4 · Round Robin",
+        "title": "A time quantum is a LIMIT, not a fixed duration",
+        "body": """
+        Same workload, Round Robin. With quantum 4, P2 runs 4–7 and exits early.
+        Then try quantum <b>1, 2, 4, 12</b>: average response 1.00 / 2.00 / 3.67 / 9.00 ms;
+        real context switches 8 / 5 / 3 / 2. Quantum 12 = FCFS.
+        """,
+        "layers": ["os", "run", "res"],
+        "code": (("os", "OS kernel · Round Robin timer tick (pseudocode)", OS_TICK), None),
+        "demo": "schedule",
+        "demo_args": {"jobs": [("P1", 0, 12), ("P2", 0, 3), ("P3", 0, 2), ("P4", 20, 1)], "n_jobs": 3, "policy": "Round Robin", "quantum": 4},
+        "board": ["V07_1", "V08_2"],
+        "say": ["9–13 ve 13–17 arasındaki iki P1 kutusu gerçek bir switch değil; kuyrukta başka iş yok.",
+                "Küçük quantum: herkes çabuk sıra alır ama switch maliyeti artar. Büyük quantum: RR, FCFS'e döner."],
+    },
+    {
+        "kicker": "Slide 17 · Priority and MLFQ (board only)",
+        "title": "Importance, starvation and adaptive queues",
+        "body": """
+        <b>Priority</b> (smaller number = higher): P2 0–4, P3 4–6, P1 6–14. Priority means importance, not length.
+        <br><b>Starvation</b>: a low-priority task may wait forever → aging / periodic boost.
+        <br><b>MLFQ</b>: start in Q0; use a full slice → move down; periodic boost → back to Q0.
+        """,
+        "board": ["V09_1", "V10_1"],
+        "say": ["SJF ile aynı sıra çıkması tesadüf. MLFQ'yu ayrıntı değil strateji olarak anlatın."],
+    },
+    {
+        "kicker": "Slide 18 · Metrics and practice",
+        "title": "One task, three clocks",
+        "body": """
+        <b>Response</b> = first run − arrival · <b>Waiting</b> = time in the ready queue ·
+        <b>Turnaround</b> = completion − arrival.
+        <br>Practice: P1 = 6, P2 = 2, P3 = 4 at t = 0 → FCFS 4.67 ms, SJF 2.67 ms average wait.
+        """,
+        "demo": "schedule",
+        "demo_args": {"jobs": [("P1", 0, 6), ("P2", 0, 2), ("P3", 0, 4), ("P4", 20, 1)], "n_jobs": 3, "policy": "FCFS", "quantum": 2},
+        "board": ["V11_1", "V12_1"],
+        "say": ["Öğrencilere 5 dakika verin, kağıda çizsinler; sonra sitede kontrol edin."],
+    },
+    {
+        "kicker": "Slide 19 · Multicore (board only)",
+        "title": "Balance the load, but respect cache locality",
+        "body": """
+        Load balancing moves work to an idle core; <b>affinity</b> keeps a thread where its cache is warm.
+        <br>Two cores do not make shared data correct: balance 100, T1 +10, T2 −20 → 90, or 110 / 80 without a lock.
+        """,
+        "board": ["V13_1"],
+        "say": ["Taşımak bedava değil: T3'ün verisi Core 1'in cache'indeydi."],
+    },
+    {
+        "kicker": "Slide 20 · Final mental model",
+        "title": "Connect the whole story",
+        "body": """
+        <b>Programs</b> become processes. A <b>process</b> contains threads.
+        The <b>scheduler</b> decides which runnable thread gets CPU time, and where.
+        Threads can <b>share memory</b>, so shared state needs <b>synchronization</b>.
+        """,
+        "flow": "PROGRAM → PROCESS → THREAD(S) → SCHEDULER → CPU CORE(S)",
+        "say": ["Çıkış sorusu: bugünkü sonuçlardan hangisi beklemeden, hangisi scheduling'den, hangisi paylaşılan bellekten kaynaklandı?"],
+    },
+]
+
+
+def render_lecture_mode():
+    st.header("🎓 Lecture Mode")
+    st.caption("Present one concept at a time. Instructor notes and board drawings are in the collapsed 📝 panel.")
+    n = len(SLIDES)
+    if "lecture_slide_idx" not in st.session_state:
+        st.session_state.lecture_slide_idx = 0
+    st.session_state.lecture_slide_idx = min(st.session_state.lecture_slide_idx, n - 1)
+
+    titles = [f"{i+1}. {s['title']}" for i, s in enumerate(SLIDES)]
+
+    def go(i):
+        st.session_state.lecture_slide_idx = i
+        st.session_state.lecture_jump = titles[i]
+
+    def on_jump():
+        st.session_state.lecture_slide_idx = titles.index(st.session_state.lecture_jump)
+
+    if st.session_state.get("lecture_jump") not in titles:
+        st.session_state.lecture_jump = titles[st.session_state.lecture_slide_idx]
+    st.selectbox("Jump to slide", titles, key="lecture_jump", on_change=on_jump, label_visibility="collapsed")
+
+    idx = st.session_state.lecture_slide_idx
+    cur = SLIDES[idx]
+    layer_pills(cur.get("layers"))
+    lecture_slide(cur["kicker"], cur["title"], cur["body"], cur.get("flow"))
+
+    if cur.get("code"):
+        code_pair(*cur["code"])
+
+    demo = cur.get("demo")
+    if demo:
+        st.markdown("<span class='demo-label'>LIVE DEMO</span>", unsafe_allow_html=True)
+        key = f"lecture_s{idx+1}"
+        if demo == "process":
+            render_process_demo(key)
+        elif demo == "thread":
+            render_thread_demo(key, backend_open=True)
+        elif demo == "schedule":
+            render_scheduling_demo(key, **cur.get("demo_args", {}))
+
+    render_board(cur.get("board", []), cur.get("say", []))
+
+    st.divider()
+    left, mid, right = st.columns([1, 2, 1])
+    with left:
+        st.button("← Previous", width="stretch", disabled=idx == 0, key="lecture_prev", on_click=go, args=(max(idx - 1, 0),))
+    with mid:
+        st.markdown(f"<div class='nav-caption'>Slide {idx + 1} of {n}</div>", unsafe_allow_html=True)
+    with right:
+        st.button("Next →", width="stretch", disabled=idx == n - 1, key="lecture_next", on_click=go, args=(min(idx + 1, n - 1),))
 
 
 def main():
@@ -252,191 +763,22 @@ def main():
     st.caption("A no-code teaching interface for OSTEP-style operating-system simulations")
     tabs = st.tabs(["🎓 Lecture Mode", "Overview", "1 Process States", "2 CPU Scheduling", "3 Threads & Data Race", "Instructor Notes"])
 
-
-
     with tabs[0]:
-        st.header("🎓 Lecture Mode")
-        st.caption("Present one concept at a time. Use Previous / Next to move through the lesson.")
-
-        slides = [
-            {
-                "kicker": "Slide 1 · Why OSTEP?",
-                "title": "Operating Systems are easier to learn when behavior is visible",
-                "body": """
-                <b>OSTEP</b> provides small simulation programs for operating-system concepts.
-                We use them as a <b>simulation engine</b>, while this web app provides a classroom-friendly interface.
-                <br><br>
-                The goal is not to develop an OS kernel. The goal is to <b>observe OS behavior</b> and connect it to the lecture.
-                """,
-                "flow": "Theory → Prediction → Simulation → Evidence → Explanation",
-                "demo": None,
-            },
-            {
-                "kicker": "Slide 2 · Architecture",
-                "title": "What is running behind this website?",
-                "body": """
-                The web page does not replace OSTEP. It calls the original Python simulators in the backend.
-                <br><br>
-                <b>Frontend:</b> Streamlit teaching interface<br>
-                <b>Backend:</b> OSTEP Python simulation scripts<br>
-                <b>Student task:</b> observe, compare, explain
-                """,
-                "flow": "Browser → Streamlit → OSTEP Python scripts → Simulation output",
-                "demo": None,
-            },
-            {
-                "kicker": "Slide 3 · Repository Map",
-                "title": "Which OSTEP components are we using?",
-                "body": """
-                <b>cpu-intro</b> → process states and CPU/I/O behavior<br>
-                <b>cpu-sched</b> → scheduling policies<br>
-                <b>threads-intro</b> → threads, interleaving and shared-memory races
-                <br><br>
-                Later in the semester, the repository also contains virtual-memory and file-system exercises.
-                """,
-                "flow": None,
-                "demo": None,
-            },
-            {
-                "kicker": "Slide 4 · Scenario 1",
-                "title": "A process does not continuously own the CPU",
-                "body": """
-                A process can be <b>RUNNING</b>, <b>READY</b>, or <b>WAITING</b>.
-                When a process requests I/O, it may become WAITING. The CPU can then execute another READY process.
-                <br><br>
-                <b>Prediction:</b> What should happen when an I/O-bound process starts waiting?
-                """,
-                "flow": "RUNNING → I/O request → WAITING   |   another READY process → RUNNING",
-                "demo": "process",
-            },
-            {
-                "kicker": "Slide 5 · Scenario 2",
-                "title": "Same jobs. Same CPU. Different scheduler.",
-                "body": """
-                The scheduler decides <b>which runnable process/thread gets CPU time next</b>.
-                Changing the scheduling policy can change waiting, turnaround and response times even when the workload is identical.
-                <br><br>
-                Compare <b>FCFS</b>, <b>SJF</b> and <b>Round Robin</b>.
-                <br><br>
-                <b>Prediction:</b> If the jobs do not change, why can waiting time change?
-                """,
-                "flow": "Same workload + Different policy → Different execution order → Different metrics",
-                "demo": "schedule",
-            },
-            {
-                "kicker": "Slide 6 · One Process, Multiple Threads",
-                "title": "Threads share a process, but have separate execution states",
-                "body": """
-                Threads in the same process share code, heap and global data.
-                Each thread still has its own stack, registers and execution state.
-                <br><br>
-                Shared memory makes communication fast — but it also creates synchronization risks.
-                """,
-                "flow": "Process → Thread 1 + Thread 2 + ... → shared heap/global data",
-                "demo": None,
-            },
-            {
-                "kicker": "Slide 7 · Why counter++ is dangerous",
-                "title": "One line of code may be several machine-level steps",
-                "body": """
-                An increment such as <b>counter++</b> is conceptually:
-                <b>LOAD → ADD → STORE</b>.
-                A context switch can occur between those steps.
-                <br><br>
-                If two threads read the same old value before either STORE completes, one update can be lost.
-                """,
-                "flow": "LOAD → ADD → STORE + interleaving → possible lost update",
-                "demo": None,
-            },
-            {
-                "kicker": "Slide 8 · Scenario 3",
-                "title": "Two threads + one shared variable = possible data race",
-                "body": """
-                Multithreading itself is not the problem.
-                The problem is <b>unsynchronized access to shared state</b>.
-                <br><br>
-                <b>Prediction:</b> Starting from counter = 5, if both threads increment once, should the final value be 6 or 7?
-                """,
-                "flow": None,
-                "demo": "thread",
-            },
-            {
-                "kicker": "Slide 9 · Final Mental Model",
-                "title": "Connect the whole story",
-                "body": """
-                <b>Programs</b> become processes when executed.<br>
-                A <b>process</b> contains one or more threads.<br>
-                The <b>scheduler</b> decides which runnable thread gets CPU time.<br>
-                Threads in the same process can <b>share memory</b>.<br>
-                Shared state may require <b>synchronization</b>.
-                """,
-                "flow": "PROGRAM → PROCESS → THREAD(S) → SCHEDULER → CPU CORE(S)",
-                "demo": "final",
-            },
-        ]
-
-        if "lecture_slide_idx" not in st.session_state:
-            st.session_state.lecture_slide_idx = 0
-
-        idx = st.session_state.lecture_slide_idx
-        current = slides[idx]
-
-        lecture_slide(
-            current["kicker"],
-            current["title"],
-            current["body"],
-            current["flow"],
-        )
-
-        if current["demo"] == "process":
-            st.markdown("<span class='demo-label'>LIVE DEMO 1</span>", unsafe_allow_html=True)
-            render_process_demo("lecture_process")
-            st.info("Explain: waiting for I/O does not mean the whole CPU must wait.")
-        elif current["demo"] == "schedule":
-            st.markdown("<span class='demo-label'>LIVE DEMO 2</span>", unsafe_allow_html=True)
-            render_scheduling_demo("lecture_sched")
-            st.info("Explain: the workload did not change; only the scheduling decision changed.")
-        elif current["demo"] == "thread":
-            st.markdown("<span class='demo-label'>LIVE DEMO 3</span>", unsafe_allow_html=True)
-            render_thread_demo("lecture_thread")
-            st.info("Explain: expected 7, but an unsafe interleaving can produce 6 — a lost update/data race.")
-        elif current["demo"] == "final":
-            st.success("End-of-demo question: Which result today was caused by waiting, which by scheduling, and which by shared memory?")
-
-        st.divider()
-        left, mid, right = st.columns([1, 2, 1])
-
-        with left:
-            prev_disabled = idx == 0
-            if st.button("← Previous", use_container_width=True, disabled=prev_disabled, key="lecture_prev"):
-                st.session_state.lecture_slide_idx -= 1
-                st.rerun()
-
-        with mid:
-            st.markdown(
-                f"<div class='nav-caption'>Slide {idx + 1} of {len(slides)}</div>",
-                unsafe_allow_html=True,
-            )
-
-        with right:
-            next_disabled = idx == len(slides) - 1
-            if st.button("Next →", use_container_width=True, disabled=next_disabled, key="lecture_next"):
-                st.session_state.lecture_slide_idx += 1
-                st.rerun()
+        render_lecture_mode()
 
     with tabs[1]:
         st.header("Why this lab? Cut through abstraction.")
         st.markdown("""
-        This local web interface turns operating-system concepts into observable scenarios.
+        This web interface turns operating-system concepts into observable scenarios.
 
-        **OSTEP repository** provides the simulation scripts.  
+        **OSTEP** (*Operating Systems: Three Easy Pieces*) provides the simulation scripts.
         **This Streamlit app** provides a classroom-friendly visual interface.
         """)
         col1,col2,col3 = st.columns(3)
         with col1:
             scenario_card("cpu-intro", "Process states", "READY, RUNNING, WAITING")
         with col2:
-            scenario_card("cpu-sched", "Scheduling policies", "FIFO, SJF, Round Robin")
+            scenario_card("cpu-sched", "Scheduling policies", "FCFS, SJF, Round Robin")
         with col3:
             scenario_card("threads-intro", "Thread interleavings", "lost update and data race")
         st.markdown("""
@@ -445,98 +787,40 @@ def main():
 
     with tabs[2]:
         st.header("Scenario 1 — CPU-bound vs I/O-bound processes")
-        st.markdown("**Goal:** show that processes move between `RUNNING`, `READY`, and `WAITING`.")
-        c1,c2,c3,c4 = st.columns(4)
-        with c1: p0_len = st.number_input("P0 instructions", 1, 20, 5)
-        with c2: p0_cpu = st.slider("P0 CPU probability", 0, 100, 100)
-        with c3: p1_len = st.number_input("P1 instructions", 1, 20, 5)
-        with c4: p1_cpu = st.slider("P1 CPU probability", 0, 100, 0)
-        switch = st.selectbox("Switch behavior", ["SWITCH_ON_IO", "SWITCH_ON_END"])
-        cmd_args=["-l", f"{p0_len}:{p0_cpu},{p1_len}:{p1_cpu}", "-S", switch, "-c", "-p"]
-        st.code("python cpu-intro/process-run.py " + " ".join(cmd_args), language="bash")
-        if st.button("Run process-state simulation", type="primary"):
-            ok,msg,out=run_ostep("cpu-intro", "process-run.py", cmd_args)
-            st.info(msg)
-            output_box(out)
-        st.markdown("""
-        **Ask students:** When one process is waiting for I/O, what can the CPU do?
-        """)
+        st.markdown("**Goal:** show that processes move between `RUNNING`, `READY`, and `WAITING`, and that the CPU can run another process while one waits for I/O.")
+        render_process_demo("tab_process", show_cmd_open=True)
+        st.markdown("**Ask students:** When one process is waiting for I/O, what can the CPU do?")
 
     with tabs[3]:
         st.header("Scenario 2 — Same jobs, different scheduler")
         st.markdown("**Goal:** show that changing only the scheduling policy changes waiting and turnaround times.")
-        st.write("Default workload:")
-        jobs=[]
-        cols=st.columns(4)
-        defaults=[("P1",0,8),("P2",1,4),("P3",2,2),("P4",3,5)]
-        for idx,(n,a,b) in enumerate(defaults):
-            with cols[idx]:
-                st.subheader(n)
-                ar=st.number_input(f"{n} arrival",0,20,a,key=f"ar{n}")
-                bu=st.number_input(f"{n} burst",1,30,b,key=f"bu{n}")
-                jobs.append((n,ar,bu))
-        policy=st.radio("Policy", ["FCFS", "SJF", "Round Robin"], horizontal=True)
-        quantum=st.slider("Time Quantum (Round Robin)",1,10,2)
-        if st.button("Run scheduling simulation", type="primary"):
-            if policy=="FCFS": rows,metrics=gantt_fcfs(jobs)
-            elif policy=="SJF": rows,metrics=gantt_sjf(jobs)
-            else: rows,metrics=gantt_rr(jobs, quantum)
-            render_gantt(rows)
-            st.dataframe(metrics, use_container_width=True)
-            st.metric("Average waiting time", round(metrics["Waiting"].mean(),2))
-            st.metric("Average turnaround time", round(metrics["Turnaround"].mean(),2))
-            # Also show approximate OSTEP command for instructor continuity
-            st.caption("The visualizer computes the classroom Gantt chart directly. OSTEP scheduler.py can be used in parallel for command-line verification.")
+        render_scheduling_demo("tab_sched")
+        st.caption("The visualizer computes the classroom Gantt chart directly. OSTEP scheduler.py can be used in parallel for command-line verification.")
         st.markdown("**Ask students:** Did the jobs change, or did only the policy change?")
 
     with tabs[4]:
         st.header("Scenario 3 — Two threads, one shared variable")
         st.markdown("**Goal:** show how interleaving creates a lost update.")
-        initial=st.number_input("Shared counter initial value", 0, 100, 5)
-        mode=st.radio("Execution pattern", ["Safe execution", "Interleaved race"], horizontal=True)
-        if mode=="Safe execution":
-            rows=[("T1","LOAD",initial), ("T1","ADD",initial+1), ("T1","STORE",initial+1), ("T2","LOAD",initial+1), ("T2","ADD",initial+2), ("T2","STORE",initial+2)]
-            final=initial+2; expected=initial+2
-        else:
-            rows=[("T1","LOAD",initial), ("T2","LOAD",initial), ("T1","ADD",initial+1), ("T2","ADD",initial+1), ("T1","STORE",initial+1), ("T2","STORE",initial+1)]
-            final=initial+1; expected=initial+2
-        st.table(pd.DataFrame(rows, columns=["Thread","Step","Value seen/written"]))
-        c1,c2=st.columns(2)
-        c1.metric("Expected final value", expected)
-        c2.metric("Actual final value", final)
-        if final==expected:
-            st.success("No update was lost.")
-            st.caption("T1 completes its read-modify-write sequence before T2 reads the shared value.")
-        else:
-            st.error("Lost update: both threads used the same old value. This is a data race.")
-            st.caption("Both threads read the same old value before either STORE completes, so one increment is overwritten.")
-        st.divider()
-        st.subheader("Run OSTEP x86.py backend")
-        st.caption("This executes the OSTEP threads-intro/simple-race.s example in the backend.")
-        interval=st.slider("Interrupt interval (-i)",1,10,1)
-        cmd_args=["-p","simple-race.s","-t","2","-i",str(interval),"-M","2000","-c"]
-        st.code("python threads-intro/x86.py " + " ".join(cmd_args), language="bash")
-        if st.button("Run OSTEP thread simulation"):
-            ok,msg,out=run_ostep("threads-intro", "x86.py", cmd_args)
-            st.info(msg)
-            output_box(out)
+        render_thread_demo("tab_thread", backend_open=True)
 
     with tabs[5]:
         st.header("Suggested classroom script")
         st.markdown("""
-        1. **Predict:** Ask what students expect before each run.  
-        2. **Run:** Execute the scenario.  
-        3. **Observe:** Ask students to point to the evidence.  
-        4. **Explain:** Connect the observation to OS terminology.
+        Every live demo follows **four layers**:
+
+        1. **Application code** — what the developer writes (user space).
+        2. **OS kernel** — how the scheduler and process states react (pseudocode, not real kernel source).
+        3. **Run on site** — enter the parameters and predict before running.
+        4. **Observed result** — total time, CPU utilization, waiting time, final value.
 
         Recommended order:
 
-        - Process states: `READY → RUNNING → WAITING`
+        - Process states: `READY → RUNNING → WAITING` · SWITCH_ON_IO vs SWITCH_ON_END
+        - Threads: `shared memory + interleaving → data race` · fix with a mutex
         - Scheduling: `same jobs + different policy → different waiting time`
-        - Threads: `shared memory + interleaving → data race`
         """)
         st.markdown("""
-        **Important explanation:** Multithreading is not the problem.  
+        **Important explanation:** Multithreading is not the problem.
         The problem is unsynchronized access to shared state.
         """)
 

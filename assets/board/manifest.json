@@ -1,0 +1,245 @@
+[
+ {
+  "code": "V01",
+  "title": "Process states",
+  "slides": "10, 14, 25-26",
+  "board": 1,
+  "boards": 2,
+  "img": "V01_1.jpg",
+  "caps": [
+   "Üç durumu çizin: READY, RUNNING, WAITING. Her biri bir soru: CPU'yu kullanıyor mu, kullanabilir mi?",
+   "Scheduler READY'den birini seçer: READY → RUNNING.",
+   "Zaman dilimi dolarsa veya OS keserse geri READY'ye döner: preemption.",
+   "I/O veya kilitli mutex: RUNNING → WAITING. Bu sırada CPU'yu kullanmaz, ready queue'da da değildir.",
+   "Olay bitince doğrudan RUNNING'e değil, READY'ye döner. Sırasını yeniden bekler.",
+   "İşi biten süreç FINISHED olur."
+  ]
+ },
+ {
+  "code": "V01",
+  "title": "Process states",
+  "slides": "10, 14, 25-26",
+  "board": 2,
+  "boards": 2,
+  "img": "V01_2.jpg",
+  "caps": [
+   "Şimdi Demo 1'in sonucunu tahtaya yazın: P0 bir I/O yapıyor, P1 dört birim CPU kullanıyor.",
+   "Zaman 2–5: P0 BLOCKED ama CPU satırında 1 var. CPU boşta değil, P1'i çalıştırıyor.",
+   "Sonuç: SWITCH_ON_IO ile 7 birim, SWITCH_ON_END ile 11 birim. Aynı işler, farklı karar, farklı süre."
+  ]
+ },
+ {
+  "code": "V02",
+  "title": "Concurrency vs parallelism",
+  "slides": "4, 16-22",
+  "board": 1,
+  "boards": 1,
+  "img": "V02_1.jpg",
+  "caps": [
+   "Üstte tek çekirdek. A ve B sırayla çalışıyor: ikisi de ilerliyor ama asla aynı anda değil.",
+   "Altta iki çekirdek. Aynı zaman sütununda A ve B gerçekten aynı anda çalışıyor.",
+   "Aynı zaman sütununu gösterin: çizgi boyunca iki çekirdek de dolu.",
+   "Tanımları altına yazın. Concurrency: aynı dönemde ilerleme. Parallelism: aynı anda yürütme.",
+   "Dört vakayı bağlayın: vaka 1–2 üst çizelge, vaka 3–4 alt çizelge. Process mi thread mi olduğu çizelgeyi değiştirmez."
+  ]
+ },
+ {
+  "code": "V03",
+  "title": "Lost update: two threads, one balance",
+  "slides": "3, 27",
+  "board": 1,
+  "boards": 2,
+  "img": "V03_1.jpg",
+  "caps": [
+   "Başlangıç bakiyesi 100. İki thread de 10 ekliyor. Doğru sonuç 120 olmalı.",
+   "T1 okudu: 100. Tam burada context switch oluyor.",
+   "T2, T1 yazmadan önce okudu. O da 100 görüyor. Sorun burada başladı.",
+   "İkisi de kendi kopyasında 110 hesapladı.",
+   "T2'nin yazdığı 110, T1'in yazdığı 110'un üzerine geldi. Bir güncelleme kayboldu.",
+   "Altına kuralı yazın: counter++ tek satır ama üç adım. Çözüm: bu üç adımı mutex ile korumak."
+  ]
+ },
+ {
+  "code": "V03",
+  "title": "Lost update: two threads, one balance",
+  "slides": "3, 27",
+  "board": 2,
+  "boards": 2,
+  "img": "V03_2.jpg",
+  "caps": [
+   "Sitedeki gerçek simülatörün sonucunu yazın: aynı kod, kesme aralığı değişince sonuç değişiyor.",
+   "Kesme 1 veya 2 komutta bir: oku-artır-yaz arasına düşüyor, güncelleme kayboluyor.",
+   "Kesme 3 komutta bir: her thread üç adımını bitiriyor, sonuç doğru. Doğruluğu zamanlamaya bırakmak hatadır."
+  ]
+ },
+ {
+  "code": "V04",
+  "title": "Same two jobs, three policies",
+  "slides": "40-43",
+  "board": 1,
+  "boards": 1,
+  "img": "V04_1.jpg",
+  "caps": [
+   "İki iş: P1 zaman 0'da geliyor, 10 ms istiyor. P2 zaman 3'te geliyor, 2 ms istiyor.",
+   "FCFS non-preemptive: P2 zaman 3'te gelse de P1 bitene kadar bekler.",
+   "Round Robin, quantum 2: zaman 2'de P2 henüz yok, P1 devam eder. Zaman 4'te sıra P2'ye geçer.",
+   "SRTF: zaman 3'te P1'in 7 ms'si kaldı, P2 2 ms istiyor. Kısa olan hemen CPU'yu alır.",
+   "Zaman 3'e kesik bir çizgi çekin: P2'nin geldiği an. Üç politika bu ana farklı tepki veriyor.",
+   "Preemption bir yetenek. Algoritma onu ne zaman kullanacağını seçer."
+  ]
+ },
+ {
+  "code": "V05",
+  "title": "FCFS vs SJF  (8 / 4 / 2)",
+  "slides": "52-58",
+  "board": 1,
+  "boards": 1,
+  "img": "V05_1.jpg",
+  "caps": [
+   "Üç iş, hepsi zaman 0'da geliyor: P1 8 ms, P2 4 ms, P3 2 ms. Tek çekirdek, I/O yok.",
+   "FCFS: geliş sırası. P1 0–8, P2 8–12, P3 12–14.",
+   "Bekleme = başlama anı eksi geliş anı. Toplayıp üçe bölün: 6.67 ms.",
+   "SJF: en kısa iş önce. P3 0–2, P2 2–6, P1 6–14.",
+   "Toplam iş yine 14 ms. Değişen sadece sıra. Ama SJF iş sürelerini önceden bilmeyi varsayar."
+  ]
+ },
+ {
+  "code": "V06",
+  "title": "SRTF step by step",
+  "slides": "60, 62",
+  "board": 1,
+  "boards": 1,
+  "img": "V06_1.jpg",
+  "caps": [
+   "P1 zaman 0'da gelir, 8 ms ister. P2 zaman 1'de gelir, 4 ms ister.",
+   "Zaman 0: yalnız P1 var, çalışır.",
+   "Zaman 1: P2 geldi. SRTF her gelişte yeniden karar verir.",
+   "Kalan süreleri karşılaştırın: P1'in 7 ms'si kaldı, P2 4 ms istiyor.",
+   "4, 7'den küçük: P1 kesilir, P2 çalışır.",
+   "Zaman 5'te P2 biter, P1 kaldığı yerden devam eder.",
+   "Gantt: P1 0–1, P2 1–5, P1 5–12.",
+   "Bekleme: P1 için 12 − 8 = 4, P2 için 0. Uzun iş, sürekli kısa iş gelirse aç kalabilir."
+  ]
+ },
+ {
+  "code": "V07",
+  "title": "Round Robin q = 2: the ready queue",
+  "slides": "63-64",
+  "board": 1,
+  "boards": 1,
+  "img": "V07_1.jpg",
+  "caps": [
+   "P1 8, P2 4, P3 2 ms. Quantum 2 ms. Her dilimden sonra kuyruğu yazın.",
+   "P1 2 ms çalışır, 6 kalır, kuyruğun sonuna gider.",
+   "P2 2 ms çalışır, 2 kalır.",
+   "P3'ün 2 ms'si vardı, dilimini bitirince tamamen biter.",
+   "Sıra yine P1'de.",
+   "P2 son 2 ms'sini çalışır ve biter.",
+   "Kuyrukta yalnız P1 kaldı. Quantum dolsa da yine P1 seçilir, gerçek switch yok.",
+   "Bekleme = bitiş − geliş − iş süresi. P1 6, P2 6, P3 4. Ortalama 5.33 ms."
+  ]
+ },
+ {
+  "code": "V08",
+  "title": "Demo 3: one workload, three policies",
+  "slides": "48-49, 61",
+  "board": 1,
+  "boards": 2,
+  "img": "V08_1.jpg",
+  "caps": [
+   "Demo 3 değerleri: P1 12, P2 3, P3 2 ms, hepsi zaman 0'da. Önce tahmin: P2 ve P3 hangisinde en erken biter?",
+   "FCFS: bekleme 0, 12, 15. Ortalama 9 ms.",
+   "SJF: bekleme 5, 2, 0. Ortalama 2.33 ms. Cevap: SJF.",
+   "RR q=4: bekleme 5, 4, 7. Ortalama 5.33 ms. P2'nin bloğu 4–7: 3 ms sürdü.",
+   "Quantum bir üst sınır. P2'nin işi 3 ms'de bitti, CPU'yu hemen bıraktı."
+  ]
+ },
+ {
+  "code": "V08",
+  "title": "Demo 3: one workload, three policies",
+  "slides": "48-49, 61",
+  "board": 2,
+  "boards": 2,
+  "img": "V08_2.jpg",
+  "caps": [
+   "Quantum küçüldükçe ilk yanıt hızlanır ama switch sayısı artar.",
+   "Quantum 12: tablo FCFS ile aynı. Büyük quantum Round Robin'i FCFS'e çevirir."
+  ]
+ },
+ {
+  "code": "V09",
+  "title": "Priority scheduling and starvation",
+  "slides": "67-69",
+  "board": 1,
+  "boards": 1,
+  "img": "V09_1.jpg",
+  "caps": [
+   "Küçük sayı = yüksek öncelik. P2 en önemli, sonra P3, sonra P1.",
+   "Non-preemptive priority: P2 0–4, P3 4–6, P1 6–14.",
+   "SJF ile aynı sıra çıkması tesadüf. Öncelik önem demek, uzunluk değil.",
+   "Starvation: yüksek öncelikli işler sürekli gelirse P1 hiç seçilmeyebilir.",
+   "Çözüm fikri: aging. Bekleyen işin önceliği zamanla artırılır; MLFQ'daki boost da bu fikir."
+  ]
+ },
+ {
+  "code": "V10",
+  "title": "MLFQ: a mini story",
+  "slides": "70-74",
+  "board": 1,
+  "boards": 1,
+  "img": "V10_1.jpg",
+  "caps": [
+   "Üç kuyruk: Q0 en yüksek, 2 ms dilim. Q1 4 ms. Q2 FCFS.",
+   "P1 CPU yoğun, 10 ms. P2 kısa, 1 ms. İkisi de Q0'dan başlar.",
+   "P1 Q0'da 2 ms'lik dilimini tamamen kullanır: CPU yoğun sayılır, Q1'e iner.",
+   "P2 Q0'da 1 ms çalışır ve biter. Kısa iş üst kuyrukta hızlıca bitti.",
+   "P1 Q1'de 4 ms'lik dilimini de tamamen kullanır, Q2'ye iner.",
+   "P1 kalan 4 ms'yi Q2'de bitirir. Toplam 11 ms.",
+   "Üç kural: yeni iş en üstten başlar, dilimi doldurursa iner, boost herkesi yukarı taşır."
+  ]
+ },
+ {
+  "code": "V11",
+  "title": "One task, three clocks",
+  "slides": "75-76",
+  "board": 1,
+  "boards": 1,
+  "img": "V11_1.jpg",
+  "caps": [
+   "FCFS örneğindeki P2: zaman 0'da gelir, 8'de ilk kez çalışır, 12'de biter.",
+   "Response: gelişten ilk çalışmaya kadar. 8 ms.",
+   "Waiting: ready kuyruğunda geçen toplam süre. Burada kesinti olmadığı için yine 8 ms.",
+   "Turnaround: gelişten bitişe kadar. 12 ms.",
+   "Round Robin'de waiting ile response ayrılır: iş erken başlar ama arada bekler."
+  ]
+ },
+ {
+  "code": "V12",
+  "title": "Practice solution  (6 / 2 / 4)",
+  "slides": "77-78",
+  "board": 1,
+  "boards": 1,
+  "img": "V12_1.jpg",
+  "caps": [
+   "Alıştırma: P1 6, P2 2, P3 4 ms, hepsi zaman 0'da. Önce öğrenciler çizsin.",
+   "FCFS: P1 0–6, P2 6–8, P3 8–12. Bekleme 0, 6, 8.",
+   "SJF: P2 0–2, P3 2–6, P1 6–12. Bekleme 0, 2, 6.",
+   "Sitede kontrol: P4'ü arrival 20, burst 1 ile park edin. Ortalamayı P1–P3 satırlarından okuyun."
+  ]
+ },
+ {
+  "code": "V13",
+  "title": "Multicore: balance vs locality",
+  "slides": "83-90",
+  "board": 1,
+  "boards": 1,
+  "img": "V13_1.jpg",
+  "caps": [
+   "İki çekirdek. Core 1'de dört iş var, Core 2 boş. Sorun: yük dengesiz.",
+   "Load balancing: T3 ve T4'ü Core 2'ye taşı.",
+   "Ama taşımak bedava değil: T3'ün verisi Core 1'in cache'indeydi. Core 2'de cache soğuk. Buna affinity denir.",
+   "Banka örneği: Core 1'de T1 +10, Core 2'de T2 −20. Bakiye 100. Mutex yoksa sonuç ne olabilir?",
+   "İki çekirdek doğruluğu sağlamaz. Scheduling zaman ve yer verir, synchronization doğruluk verir."
+  ]
+ }
+]
