@@ -274,9 +274,9 @@ def board_manifest():
     return {f"{e['code']}_{e['board']}": e for e in data}
 
 
-def render_board(board_keys, say, lang="tr", links=False):
-    """Instructor-only panel: what to draw on the board and what to say."""
-    if not board_keys and not say:
+def render_board(board_keys, say, lang="tr", links=False, qa=None):
+    """Instructor-only panel: what to say, questions with answers, and the board drawing."""
+    if not board_keys and not say and not qa:
         return
     t = UI[lang]
     with st.expander(t["panel"], expanded=False):
@@ -286,6 +286,11 @@ def render_board(board_keys, say, lang="tr", links=False):
                 st.markdown(f"- {line}")
         if links:
             st.markdown(OSTEP_LINKS[lang])
+        if qa:
+            st.markdown(f"**{t['qa']}**")
+            for q_tr, a_tr, q_en, a_en in qa:
+                q, a = (q_en, a_en) if lang == "en" else (q_tr, a_tr)
+                st.markdown(f"**{t['q']}:** {q}  \n**{t['a']}:** {a}")
         man = board_manifest()
         for key in board_keys:
             e = man.get(key)
@@ -475,6 +480,162 @@ SAY_EN = {
     20: ["Exit question: which of today's results came from waiting, which from scheduling, which from shared memory?"],
 }
 
+# (question_tr, answer_tr, question_en, answer_en) per Lecture Mode slide
+QA = {
+    1: [("OSTEP simülatörü gerçek işletim sistemini değiştirir mi?",
+         "Hayır. Kullanıcı alanında çalışan sıradan bir Python programıdır; kernel'e dokunmaz, yalnızca davranışı modeller.",
+         "Does the OSTEP simulator change the real operating system?",
+         "No. It is an ordinary Python program in user space; it never touches the kernel, it only models the behavior.")],
+    2: [("Uygulama ne zaman çalışacağına kendisi karar verebilir mi?",
+         "Hayır. Uygulama öncelik veya çekirdek tercihi isteyebilir, ama kararı OS kendi politikasına göre verir.",
+         "Can an application decide when it runs?",
+         "No. It can request a priority or core affinity, but the OS makes the decision under its own policy.")],
+    3: [("Her durumda süreç CPU'yu kullanıyor mu, kullanabilir mi?",
+         "RUNNING: kullanıyor. READY: kullanmıyor ama CPU verilirse hemen kullanabilir. WAITING: kullanmıyor ve verilse de kullanamaz, bir olay bekliyor.",
+         "In each state, is the process using the CPU, and could it?",
+         "RUNNING: using it. READY: not using it, but could immediately. WAITING: not using it and could not even if given the CPU; it waits for an event."),
+        ("Tek çekirdekte aynı anda kaç thread yürütülür?",
+         "Bir. Diğerleri READY veya WAITING durumundadır.",
+         "How many threads execute at the same instant on one core?",
+         "One. The others are READY or WAITING."),
+        ("I/O'su biten süreç doğrudan RUNNING olur mu?",
+         "Hayır. Önce READY olur ve scheduler'ın onu seçmesini bekler.",
+         "Does a process whose I/O completes go straight to RUNNING?",
+         "No. It becomes READY and waits for the scheduler to pick it.")],
+    4: [("P0 I/O başlatıp beklemeye geçince CPU boş kalmak zorunda mı?",
+         "Hayır. OS P0'ı BLOCKED yapar ve READY olan P1'i çalıştırır. Demo 1'de bu zaman 2–5 arasında görünür.",
+         "When P0 starts I/O and waits, must the CPU stay idle?",
+         "No. The OS marks P0 BLOCKED and runs the READY process P1. In Demo 1 this is visible at times 2–5.")],
+    5: [("SWITCH_ON_END non-preemptive scheduling ile aynı şey mi?",
+         "Hayır. Non-preemptive bir scheduler çalışan işi zorla kesmez, ama iş bloke olunca READY olan başka işi çalıştırabilir. SWITCH_ON_END buna bile izin vermez.",
+         "Is SWITCH_ON_END the same as non-preemptive scheduling?",
+         "No. A non-preemptive scheduler never forces the running job off, but it can run another READY job when the current one blocks. SWITCH_ON_END does not even allow that."),
+        ("Modern bir işletim sistemi hangisine benzer davranır?",
+         "SWITCH_ON_IO'ya. Bloke olan thread'in yerine runnable bir thread çalıştırılır.",
+         "Which one resembles a modern operating system?",
+         "SWITCH_ON_IO: a runnable thread is scheduled when the current thread blocks.")],
+    6: [("P0 I/O beklerken CPU'yu kim kullanır?",
+         "P1. Zaman 2–5 arasında P0 BLOCKED, P1 RUN:cpu ve CPU sütununda 1 var. Sonuç: Total Time 7, CPU %85,71.",
+         "While P0 waits for I/O, who uses the CPU?",
+         "P1. At times 2–5 P0 is BLOCKED, P1 is RUN:cpu and the CPU column shows 1. Result: total time 7, CPU 85.71%."),
+        ("Run B'de aynı iş yapılıyor; neden daha uzun sürüyor?",
+         "SWITCH_ON_END'de P1, P0'ın I/O'su bitene kadar READY bekliyor; I/O ile CPU işi örtüşmüyor. Süre 7'den 11'e çıkıyor, CPU %54,55.",
+         "Run B does the same work; why is it slower?",
+         "With SWITCH_ON_END, P1 waits READY until P0's I/O completes, so I/O and CPU work do not overlap. Time grows from 7 to 11, CPU 54.55%.")],
+    7: [("Q1 · Çalışan süreç devam edemezse ne olur?",
+         "BLOCKED olur ve CPU'yu bırakır; OS READY olan başka bir süreci çalıştırabilir.",
+         "Q1 · What happens when the running process cannot continue?",
+         "It becomes BLOCKED and gives up the CPU; the OS can run another READY process."),
+        ("Q2 · Birden çok süreç READY ise hangisi çalışır?",
+         "Bunu CPU scheduler, politikasına göre seçer: FCFS, SJF, Round Robin, Priority, MLFQ. Bugünün konusu bu.",
+         "Q2 · If several processes are READY, which one runs?",
+         "The CPU scheduler chooses according to its policy: FCFS, SJF, Round Robin, Priority, MLFQ. That is today's topic.")],
+    8: [("Tek çekirdekte A ve B aynı milisaniyede çalışıyor mu?",
+         "Hayır, sırayla çalışıyorlar. Ama ikisi de ilerliyor: bu concurrency.",
+         "On one core, do A and B run in the same millisecond?",
+         "No, they take turns. But both make progress: that is concurrency."),
+        ("İki çekirdekte?",
+         "Evet. Aynı zaman sütununda ikisi de gerçekten çalışıyor: bu parallelism.",
+         "And on two cores?",
+         "Yes. In the same time column both truly run: that is parallelism.")],
+    9: [("Bu kodda hata var mı?",
+         "Tek thread'le çalışınca yok. İki thread'de counter++ atomik değil: LOAD ile STORE arasında bir context switch olursa bir artırma kaybolur.",
+         "Is there a bug in this code?",
+         "Not with one thread. With two threads counter++ is not atomic: a context switch between LOAD and STORE loses one increment.")],
+    10: [("Sayaç 5, iki thread birer kez artırıyor: sonuç 6 mı, 7 mi?",
+          "Doğrusu 7. Adımlar araya girerse (iki thread de 5'i okursa) sonuç 6 olur.",
+          "Counter 5, both threads increment once: is the result 6 or 7?",
+          "The correct result is 7. If the steps interleave (both threads read 5), the result is 6."),
+         ("x86.py'de kesme aralığı 3 olunca neden sonuç doğru çıkıyor?",
+          "Program üç komut: oku, artır, yaz. Kesme her 3 komutta bir gelince her thread üç adımını kesintisiz bitiriyor ve sonuç 2 oluyor. Bu, programın güvenli olduğu anlamına gelmez; yalnızca bu zamanlamada şanslıyız.",
+          "Why is the result correct in x86.py with interrupt interval 3?",
+          "The program is three instructions: read, add, write. With an interrupt every 3 instructions, each thread finishes its three steps uninterrupted, giving 2. That does not make the program safe; we are just lucky with this timing.")],
+    11: [("Preempt edilen thread tuttuğu mutex'i bırakır mı?",
+          "Hayır. CPU'yu kaybetmek kilidi bırakmak demek değil; kilit sahibinde kalır ve diğer thread'ler bekler.",
+          "Does a preempted thread release the mutex it holds?",
+          "No. Losing the CPU does not release the lock; it stays with its owner and the others wait."),
+         ("Kilit bekleyen thread CPU kullanır mı?",
+          "Blocking mutex'te hayır: WAITING durumuna geçer ve uyur. Spinlock'ta ise döngüde CPU harcar.",
+          "Does a thread waiting for a lock use the CPU?",
+          "With a blocking mutex, no: it goes to WAITING and sleeps. With a spinlock it burns CPU in a loop.")],
+    12: [("P2 zaman 3'te gelince OS P1'i keser mi?",
+          "FCFS: hayır, P2 7 ms bekler. RR q=2: dilim dolunca, zaman 4'te sıra P2'ye geçer, 1 ms bekler. SRTF: hemen keser, P2 hiç beklemez.",
+          "When P2 arrives at time 3, does the OS interrupt P1?",
+          "FCFS: no, P2 waits 7 ms. RR q=2: when the slice ends at time 4 it is P2's turn, it waits 1 ms. SRTF: immediately, P2 does not wait at all."),
+         ("Hangi politikada P2 en az bekler?",
+          "SRTF (0 ms), sonra RR (1 ms), en son FCFS (7 ms).",
+          "In which policy does P2 wait least?",
+          "SRTF (0 ms), then RR (1 ms), then FCFS (7 ms).")],
+    13: [("FCFS mi SJF mi daha düşük ortalama bekleme verir?",
+          "SJF: 2,67 ms. FCFS: 6,67 ms. Toplam iş aynı, yalnızca sıra değişti.",
+          "Which gives the lower average waiting time, FCFS or SJF?",
+          "SJF: 2.67 ms. FCFS: 6.67 ms. Same total work, only the order changed."),
+         ("Gerçek bir OS neden saf SJF kullanamaz?",
+          "Bir işin CPU süresini önceden bilmez; geçmiş davranıştan tahmin eder. Ayrıca kısa işler sürekli gelirse uzun iş aç kalabilir.",
+          "Why can't a real OS use pure SJF?",
+          "It does not know a job's CPU time in advance; it estimates it from past behavior. Also, a long job can starve if short jobs keep arriving.")],
+    14: [("Zaman 1'de P2 neden P1'i keser?",
+          "P1'in kalan süresi 7 ms, P2'nin ihtiyacı 4 ms. SRTF kalan süresi en kısa olanı seçer.",
+          "Why does P2 interrupt P1 at time 1?",
+          "P1 has 7 ms left, P2 needs 4 ms. SRTF picks the shortest remaining time."),
+         ("SRTF'nin riski nedir?",
+          "Starvation: kısa işler sürekli gelirse uzun iş CPU'yu hiç alamayabilir.",
+          "What is the risk of SRTF?",
+          "Starvation: if short jobs keep arriving, a long job may never get the CPU.")],
+    15: [("P2 ve P3 hangi politikada en erken biter?",
+          "SJF: P3 zaman 2'de, P2 zaman 5'te biter. RR q=4'te 9 ve 7, FCFS'te 17 ve 15. Ortalama bekleme: SJF 2,33 · RR 5,33 · FCFS 9,00 ms.",
+          "In which policy do P2 and P3 finish earliest?",
+          "SJF: P3 at time 2, P2 at time 5. With RR q=4 at 9 and 7, with FCFS at 17 and 15. Average waiting: SJF 2.33 · RR 5.33 · FCFS 9.00 ms.")],
+    16: [("P2'nin bloğu neden 4–8 değil de 4–7?",
+          "P2'nin yalnızca 3 ms işi vardı. Quantum bir üst sınır; iş bitince CPU hemen bırakılır.",
+          "Why is P2's block 4–7 and not 4–8?",
+          "P2 only needed 3 ms. The quantum is an upper limit; the CPU is released as soon as the job ends."),
+         ("Quantum çok küçülürse ne olur?",
+          "İlk yanıt hızlanır (q=1'de ortalama response 1,00 ms), ama context switch sayısı artar (8) ve her switch'in maliyeti var.",
+          "What happens if the quantum becomes very small?",
+          "First response gets faster (average response 1.00 ms at q=1), but context switches increase (8) and each switch has a cost."),
+         ("Quantum çok büyürse?",
+          "Round Robin FCFS'e döner: q=12'de çizelge FCFS ile birebir aynı (ortalama bekleme 9,00 ms).",
+          "And if the quantum becomes very large?",
+          "Round Robin turns into FCFS: at q=12 the schedule is identical to FCFS (average waiting 9.00 ms).")],
+    17: [("Priority ile SJF neden aynı sırayı verdi?",
+          "Tesadüf. Öncelik önemi, SJF ise süreyi ölçer; bu örnekte ikisi aynı sırayı üretti.",
+          "Why did Priority and SJF give the same order?",
+          "Coincidence. Priority measures importance, SJF measures length; in this example they happened to agree."),
+         ("Starvation nasıl önlenir?",
+          "Aging: bekleyen işin önceliği zamanla artırılır. MLFQ'daki periyodik boost da aynı fikir.",
+          "How is starvation prevented?",
+          "Aging: a waiting job's priority grows over time. The periodic boost in MLFQ is the same idea."),
+         ("MLFQ'da boost hangi sorunu azaltır?",
+          "Alt kuyruktaki uzun işlerin hiç CPU alamamasını (starvation) ve davranışı değişen işlerin altta takılı kalmasını.",
+          "Which problem does the boost in MLFQ reduce?",
+          "Long jobs in the lower queues never getting the CPU (starvation), and jobs whose behavior changed staying stuck at the bottom.")],
+    18: [("Alıştırma: FCFS mi SJF mi daha düşük ortalama bekleme verir?",
+          "SJF: (0 + 2 + 6) / 3 = 2,67 ms. FCFS: (0 + 6 + 8) / 3 = 4,67 ms.",
+          "Practice: which gives the lower average waiting time, FCFS or SJF?",
+          "SJF: (0 + 2 + 6) / 3 = 2.67 ms. FCFS: (0 + 6 + 8) / 3 = 4.67 ms."),
+         ("FCFS örneğinde P2'nin response, waiting ve turnaround süreleri nedir?",
+          "Geliş 0, ilk çalışma 8, bitiş 12: response 8, waiting 8, turnaround 12 ms.",
+          "In the FCFS example, what are P2's response, waiting and turnaround times?",
+          "Arrival 0, first run 8, completion 12: response 8, waiting 8, turnaround 12 ms.")],
+    19: [("İlk resimde yanlış olan ne?",
+          "Yük dengesiz: Core 1'de dört iş var, Core 2 boş.",
+          "What is wrong in the first picture?",
+          "The load is unbalanced: Core 1 has four jobs, Core 2 is idle."),
+         ("Banka örneğinde mutex yoksa sonuç ne olabilir?",
+          "İkisi de 100'ü okursa: T1 110, T2 80 yazar ve en son yazan kazanır. Sonuç 110 veya 80 olur; doğrusu 90.",
+          "In the bank example, without a mutex what can the result be?",
+          "If both read 100: T1 writes 110, T2 writes 80, and the last writer wins. The result is 110 or 80; the correct value is 90."),
+         ("İki çekirdek her programı iki kat hızlandırır mı?",
+          "Hayır. Yalnızca paralel çalışabilen kısım hızlanır; kilitle korunan kısım sırayla çalışır.",
+          "Do two cores make every program twice as fast?",
+          "No. Only the part that can run in parallel speeds up; the part protected by a lock still runs one at a time.")],
+    20: [("Bugünkü sonuçlardan hangisi beklemeden, hangisi scheduling'den, hangisi paylaşılan bellekten kaynaklandı?",
+          "Bekleme: Demo 1, I/O sırasında CPU'nun boş kalması (7'ye karşı 11). Scheduling: Demo 3 ve 4, aynı işlerde farklı bekleme süreleri. Paylaşılan bellek: Demo 2, kaybolan güncelleme (7 yerine 6).",
+          "Which of today's results came from waiting, which from scheduling, which from shared memory?",
+          "Waiting: Demo 1, the CPU idling during I/O (7 vs 11). Scheduling: Demos 3 and 4, different waiting times for the same jobs. Shared memory: Demo 2, the lost update (6 instead of 7).")],
+}
+
 OSTEP_LINKS = {
     "tr": "📖 **OSTEP kitabı (ücretsiz):** [pages.cs.wisc.edu/~remzi/OSTEP](https://pages.cs.wisc.edu/~remzi/OSTEP/) · "
           "**Simülatörler:** [github.com/remzi-arpacidusseau/ostep-homework](https://github.com/remzi-arpacidusseau/ostep-homework)",
@@ -484,9 +645,11 @@ OSTEP_LINKS = {
 
 UI = {
     "tr": {"panel": "📝 Eğitmen · tahtaya çizilecekler ve anlatım", "say": "Söyleyin", "board": "Tahta",
-           "slides": "PPT v2 slayt", "steps": "Çizim ve anlatım sırası", "video": "tahta videosunu göster"},
+           "slides": "PPT v2 slayt", "steps": "Çizim ve anlatım sırası", "video": "tahta videosunu göster",
+           "qa": "Sorular ve cevaplar", "q": "S", "a": "C"},
     "en": {"panel": "📝 Instructor · board drawing and script", "say": "Say", "board": "Board",
-           "slides": "PPT v2 slides", "steps": "Drawing and narration steps", "video": "show the board video"},
+           "slides": "PPT v2 slides", "steps": "Drawing and narration steps", "video": "show the board video",
+           "qa": "Questions and answers", "q": "Q", "a": "A"},
 }
 
 SLIDES = [
@@ -801,7 +964,7 @@ def render_lecture_mode():
 
     lang = "en" if st.session_state.get("notes_lang", "Türkçe") == "English" else "tr"
     say = SAY_EN.get(idx + 1, cur.get("say", [])) if lang == "en" else cur.get("say", [])
-    render_board(cur.get("board", []), say, lang, links=(idx == 0))
+    render_board(cur.get("board", []), say, lang, links=(idx == 0), qa=QA.get(idx + 1))
 
     st.divider()
     left, mid, right = st.columns([1, 2, 1])
