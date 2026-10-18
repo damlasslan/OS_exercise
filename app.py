@@ -722,7 +722,7 @@ SAY_EN = {
     18: ["Students will see that q=1 is best on two criteria. But it makes 8 context switches, and each has a cost. This simulation does not add the switching cost to the total time; a real system must also measure CPU overhead, cache behaviour and throughput. So we cannot say q=1 is the best choice for every system.",
          "Do not declare q=2 or q=4 the optimum; they are candidates that trade fewer switches against better response time. Ask: 'Would you choose q=1 for a server handling millions of requests?' Expected answer: 'Not necessarily. We must also consider throughput, CPU overhead and workload characteristics.'",
          "The second section moves to system types: an interactive application considers a shorter quantum, batch a longer one; a general-purpose OS adapts to the workload; in a real-time system RR's quantum alone may be insufficient. Do not quote q values for real systems.",
-         "Main engineering message: there is no universally best scheduling policy. Then go to tab 4 (Real-World Systems), slides 14–17.",
+         "Main engineering message: there is no universally best scheduling policy. Then go to tab 4 (Real-World Systems), slides 17–21.",
          "Link back: we named Round Robin on LM 14 and now study it in detail; the 4-tick time slice in the thread demo (LM 9) was also a quantum.",
          "The two P1 boxes at 9–13 and 13–17 are not a real switch; nobody else is in the queue.",
          "Tiny quantum: everyone gets a turn quickly, but switching costs grow. Huge quantum: RR turns into FCFS."],
@@ -1181,7 +1181,7 @@ All five were covered in **Week 5** (atomic and CAS, mutex, spinlock, semaphore,
         Then try quantum <b>1, 2, 4, 12</b>: average response 1.00 / 2.00 / 3.67 / 9.00 ms;
         real context switches 8 / 5 / 3 / 2. Quantum 12 = FCFS.
         <br><b>Which quantum is best? It depends on the objective.</b>
-        Next: the engineering-decision slides in the <i>4 Real-World Systems</i> tab (slides 14–17).
+        Next: the engineering-decision slides in the <i>4 Real-World Systems</i> tab (slides 17–21).
         """,
         "flow": "There is no universally best scheduling policy: the best choice depends on requirements, workload and trade-offs.",
         "sections": [("Which quantum performs best? — decision summary", """
@@ -1224,7 +1224,7 @@ Modern Linux and Windows schedulers use more complex policies than classic fixed
                 "Öğrenciler tabloda q=1'in iki kriterde en iyi sonucu verdiğini görecekler. Ancak context switch sayısı 8. Bunun bir maliyeti var. Bu simülasyonda switch maliyetini toplam zamana eklemedik. Gerçek sistemde CPU overhead, cache davranışı ve throughput da ölçülmeli. Dolayısıyla q=1'in bütün sistemler için en iyi seçim olduğunu söyleyemeyiz.",
                 "q=2 veya q=4'ü kesin optimum ilan etmeyin; daha az switch ile daha iyi yanıt süresi arasında değerlendirilecek adaylar. Sorun: 'Would you choose q=1 for a server handling millions of requests?' Beklenen cevap: 'Not necessarily. We must also consider throughput, CPU overhead and workload characteristics.'",
                 "İkinci açılır bölüm sistem türüne geçiş: etkileşimli uygulama kısa, batch uzun quantum'u değerlendirir; genel amaçlı OS iş yüküne uyum sağlar; real-time sistemde tek başına RR quantum'u yetmeyebilir. Gerçek sistemler için q=1, 2, 4 gibi kesin değer söylemeyin.",
-                "Ana mühendislik mesajı: There is no universally best scheduling policy. Ardından 4. sekmede (Real-World Systems) slayt 14–17'ye geçin."],
+                "Ana mühendislik mesajı: There is no universally best scheduling policy. Ardından 4. sekmede (Real-World Systems) slayt 17–21'e geçin."],
     },
     {
         "kicker": "Slide 19 · Priority and MLFQ (board only)",
@@ -2684,6 +2684,145 @@ def render_stream_sched_demo(key):
         st.success("Every frame was ready on time; the update simply used the CPU between frames.")
 
 
+# --- Video rendering (batch) --------------------------------------------------------
+FRAME_SETS = {"Uneven frames (a few heavy ones)": [8, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+              "Equal frames": [2] * 16}
+
+
+def frame_split_simulate(costs, workers=4, dynamic=True):
+    """Each worker has its own core. Static: worker w renders a fixed block of frames.
+    Dynamic: a free worker takes the next frame from a shared queue."""
+    lanes = [[] for _ in range(workers)]
+    if not dynamic:
+        block = len(costs) // workers
+        for w in range(workers):
+            for f in range(w * block, (w + 1) * block):
+                lanes[w] += [f"F{f + 1}"] * costs[f]
+    else:
+        free_at, nxt = [0] * workers, 0
+        while nxt < len(costs):
+            w = min(range(workers), key=lambda k: (free_at[k], k))
+            lanes[w] += ["idle"] * (free_at[w] - len(lanes[w])) + [f"F{nxt + 1}"] * costs[nxt]
+            free_at[w] += costs[nxt]
+            nxt += 1
+    total = max(len(l) for l in lanes)
+    for l in lanes:
+        l += ["idle"] * (total - len(l))
+    return lanes, total
+
+
+def render_frame_split_demo(key):
+    c1, c2 = st.columns(2)
+    with c1:
+        pattern = st.radio("Frames to render (16)", list(FRAME_SETS), key=f"{key}_pat")
+        st.caption("Rendering cost of each frame in ms; real frames differ in cost.")
+    with c2:
+        mode = st.radio("How workers get frames", ["Static split (fixed block of 4 frames each)", "Shared work queue (take the next frame)"],
+                        index=0, key=f"{key}_mode")
+        st.caption("4 workers, one per core. The shared queue needs synchronization: an atomic counter or a mutex around pop().")
+    costs = FRAME_SETS[pattern]
+    lanes, total = frame_split_simulate(costs, 4, mode.startswith("Shared"))
+    palette = ["#DBEAFE", "#DCFCE7", "#FEF3C7", "#FCE7F3", "#EDE9FE", "#E0F2FE", "#FFE4E6", "#ECFCCB"]
+    colors = {f"F{i + 1}": palette[i % len(palette)] for i in range(len(costs))}
+    render_lanes([(f"Core {w + 1} · W{w + 1}", l) for w, l in enumerate(lanes)], colors)
+    grid = {f"Core {w + 1}": ["—" if x == "idle" else x for x in l] for w, l in enumerate(lanes)}
+    st.markdown("**Tick by tick** — one column per ms (— = core idle, nothing left for this worker)")
+    st.dataframe(pd.DataFrame(grid, index=[str(t) for t in range(total)]).T, width="stretch")
+    work = sum(costs)
+    idle = 4 * total - work
+    st.dataframe(pd.DataFrame([{"Worker": f"W{w + 1}", "Busy (ms)": sum(1 for x in l if x != "idle"),
+                                "Idle (ms)": sum(1 for x in l if x == "idle")} for w, l in enumerate(lanes)]),
+                 hide_index=True, width="stretch")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("All frames done at", f"{total} ms")
+    m2.metric("Idle core time", f"{idle} ms")
+    m3.metric("Core utilization", f"{work / (4 * total) * 100:.0f}%")
+    if idle > 4:
+        st.error("Load imbalance: some workers got the heavy frames, the others finished early and their cores sat idle.")
+    else:
+        st.success("The work is balanced: no core waits long for the slowest worker.")
+    st.caption("Shared work queue = the idea behind work stealing and thread pools. Without synchronization two workers could take "
+               "the same frame or skip one: the lost-update race from Section 2.")
+
+
+def worker_count_simulate(workers, cores=4, frames=16, cost=3, quantum=2, switch_cost=1):
+    """Workers pull frames (cost ticks each) from a shared queue and are scheduled Round Robin on `cores` cores.
+    Switching a core to a different worker costs `switch_cost` ticks (context switch + cold cache)."""
+    queue = list(range(workers))
+    running, used, prev, switching = [None] * cores, [0] * cores, [None] * cores, [0] * cores
+    left = {w: 0 for w in range(workers)}
+    remaining, done, t, switches = frames, set(), 0, 0
+    lanes = [[] for _ in range(cores)]
+    while (remaining > 0 or any(left[w] > 0 for w in left)) and t < 400:
+        for c in range(cores):
+            r = running[c]
+            if r is not None and switching[c] == 0 and used[c] >= quantum and queue:
+                queue.append(r); prev[c] = r; running[c] = None
+        for c in range(cores):
+            while running[c] is None and queue:
+                w = queue.pop(0)
+                if left[w] == 0 and remaining == 0:
+                    done.add(w); continue
+                running[c], used[c] = w, 0
+                if prev[c] is not None and prev[c] != w:
+                    switching[c] = switch_cost
+        for c in range(cores):
+            w = running[c]
+            if w is None:
+                lanes[c].append("idle"); continue
+            if switching[c] > 0:
+                switching[c] -= 1; switches += 1
+                lanes[c].append("switch"); continue
+            if left[w] == 0:
+                if remaining == 0:
+                    done.add(w); running[c] = None; prev[c] = w
+                    lanes[c].append("idle"); continue
+                remaining -= 1; left[w] = cost
+            left[w] -= 1; used[c] += 1
+            lanes[c].append(f"W{w + 1}")
+            if left[w] == 0 and remaining == 0:
+                done.add(w); running[c] = None; prev[c] = w
+        t += 1
+    while lanes and all(l and l[-1] == "idle" for l in lanes):
+        for l in lanes:
+            l.pop()
+    return lanes, len(lanes[0]), switches
+
+
+def render_worker_count_demo(key):
+    n = st.select_slider("Number of rendering workers (threads or processes)", options=[1, 2, 4, 8, 16, 32], value=8, key=f"{key}_n")
+    st.caption("4 cores · 16 frames × 3 ms of CPU work = 48 ms of work · Round Robin with a 2 ms quantum · "
+               "switching a core to another worker costs 1 ms (context switch + cold cache).")
+    lanes, total, switches = worker_count_simulate(n)
+    palette = ["#DBEAFE", "#DCFCE7", "#FEF3C7", "#FCE7F3", "#EDE9FE", "#E0F2FE", "#FFE4E6", "#ECFCCB"]
+    colors = {f"W{i + 1}": palette[i % len(palette)] for i in range(32)}
+    colors["switch"] = "#FCA5A5"
+    render_lanes([(f"Core {c + 1}", l) for c, l in enumerate(lanes)], colors)
+    grid = {f"Core {c + 1}": ["—" if x == "idle" else ("⇄" if x == "switch" else x) for x in l] for c, l in enumerate(lanes)}
+    st.markdown("**Tick by tick** — one column per ms (⇄ = context switch, — = idle)")
+    st.dataframe(pd.DataFrame(grid, index=[str(t) for t in range(total)]).T.style.map(
+        lambda v: "background-color: #FCA5A5" if v == "⇄" else ""), width="stretch")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("All frames done at", f"{total} ms")
+    m2.metric("Throughput", f"{16 / total * 10:.1f} frames / 10 ms")
+    m3.metric("Context switches", switches)
+    m4.metric("CPU spent on useful work", f"{48 / (4 * total) * 100:.0f}%")
+    rows = []
+    for k in (1, 4, 8, 32):
+        _, tt, sw = worker_count_simulate(k)
+        rows.append({"Workers": k, "Done at (ms)": tt, "Frames / 10 ms": f"{16 / tt * 10:.1f}", "Context switches": sw,
+                     "Thread stacks (8 MB each, virtual)": f"{k * 8} MB", "On screen": "◀" if k == n else ""})
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+    if n < 4:
+        st.warning("Fewer workers than cores: some cores stay idle.")
+    elif n == 4:
+        st.success("One worker per core: all cores busy, no switching overhead.")
+    else:
+        st.error("More runnable workers than cores: no extra speed, only context switches, cold caches and memory.")
+    st.caption("Bounded concurrency: about one CPU-bound worker per usable core, then measure. "
+               "In Python, CPU-bound rendering usually needs a process pool (the GIL); native or GPU pipelines differ.")
+
+
 # --- Application and OS code shown on the slides --------------------------------------
 APP_BANK = """void deposit(Account *a, int amount) {      // ATM, +10
     pthread_mutex_lock(&a->lock);
@@ -2831,6 +2970,23 @@ pick_next():
     // priority: decoder first whenever it is READY
     return policy == RR ? ready_head() : highest_priority();"""
 
+APP_RENDER = """// Shared work queue: each worker takes the next frame
+atomic_int next_frame = 0;                      // shared by all workers
+
+void *worker(void *arg) {
+    for (;;) {
+        int f = atomic_fetch_add(&next_frame, 1);   // one indivisible step
+        if (f >= n_frames) break;
+        render_frame(f);
+    }
+    return NULL;
+}
+// create about one worker per usable core, not 10,000
+
+# Python, CPU-bound: processes, not threads (GIL)
+with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+    results = list(pool.map(render_frame, frames))"""
+
 
 def _design_table(rows):
     body = "".join(f"<tr><td style='padding:6px 10px;font-weight:700;vertical-align:top'>{a}</td><td style='padding:6px 10px'>{b}</td></tr>" for a, b in rows)
@@ -2843,18 +2999,31 @@ S3 = "Section 3 · CPU Scheduling"
 SECTOR_SLIDES = [
     {
         "kicker": "Real-world systems · Overview",
-        "title": "Four systems, two dimensions",
+        "title": "Five systems, two dimensions",
+        "sections": [("Before choosing a mechanism: distinguish the layers", """
+| Layer | Examples | Role |
+| --- | --- | --- |
+| **Application** | Request queues, workers, async tasks | Defines the workload |
+| **Operating system** | CPU scheduling, preemption, priorities | Allocates the CPU |
+| **Data / hardware** | DB transactions, locks, devices | Keeps the state, executes I/O |
+
+The same words appear in different layers: a **database transaction is not an OS scheduler mechanism**, and an application **request queue is not the kernel's READY queue**.
+
+**Scheduling alone does not guarantee correctness or end-to-end latency.** Don't start by choosing an algorithm; start by identifying the engineering problem: *Problem → Requirement → Mechanism → Verification*.
+""")],
         "body": """
         Every real system needs <b>both</b> dimensions from this week:
         <br><b>Section 2 · Synchronization (safety):</b> can shared data stay correct?
         <br><b>Section 3 · CPU Scheduling (execution):</b> who runs, when, and on which core?
         <br><br>For each system we ask: <b>What must run? What must be protected? What must be optimized?</b>
-        <br><br><b>Banking</b> · <b>Robotic surgery</b> · <b>Online ticket reservation</b> · <b>Video streaming</b>
+        <br><br><b>Banking</b> · <b>Robotic surgery</b> · <b>Online ticket reservation</b> · <b>Video streaming</b> · <b>Video rendering</b>
         """,
         "flow": "Scheduling ≠ synchronization — both affect the same running system",
-        "say": ["Bu dört örnek ders notlarındaki dört mimari. Her birinde iki demo var: biri senkronizasyon (bölüm 2), biri scheduling (bölüm 3).",
+        "say": ["Ders notlarındaki dört mimariye beşinci olarak video rendering (batch) eklendi. Her birinde iki demo var: biri senkronizasyon (bölüm 2), biri scheduling (bölüm 3).",
+                "Açılır bölümle başlayın: aynı terimler farklı katmanlarda geçer. Database transaction bir OS scheduler mekanizması değildir; uygulamanın request queue'su kernel'in READY queue'su değildir. Önce algoritma seçmeyin, önce mühendislik problemini tanımlayın.",
                 "Her sistemde üç soruyu soracağız: ne çalışmalı, ne korunmalı, ne optimize edilmeli?"],
-        "say_en": ["These are the four architectures from the lecture notes. Each has two demos: one for synchronization (section 2) and one for scheduling (section 3).",
+        "say_en": ["Video rendering (batch) joins the four architectures from the lecture notes as a fifth. Each has two demos: one for synchronization (section 2) and one for scheduling (section 3).",
+                   "Start with the collapsible section: the same terms appear in different layers. A database transaction is not an OS scheduler mechanism; an application request queue is not the kernel's READY queue. Don't start by choosing an algorithm; start by identifying the engineering problem.",
                    "For each system we ask three questions: what must run, what must be protected, what must be optimized?"],
         "qa": [("Scheduling ile synchronization arasındaki fark nedir?",
                 "Scheduling kimin, ne zaman ve hangi çekirdekte çalışacağına karar verir. Synchronization paylaşılan verinin doğru kalmasını sağlar. İkisi aynı sistemde birlikte gerekir.",
@@ -2921,6 +3090,16 @@ SECTOR_SLIDES = [
         "kicker": "Banking · Design decision",
         "board": ["V14_1"],
         "title": "Banking: correct first, then responsive",
+        "sections": [("Real mechanisms: problem → mechanism → why", """| Problem | Real mechanism | Why |
+| --- | --- | --- |
+| Concurrent updates to an account | **DB transaction + row-level locking** | Prevent lost updates |
+| Shared in-process balance cache | **Mutex / single-owner message passing** | Protect shared memory |
+| Short requests behind a long report | **Preemptive scheduling + request isolation** | Reduce CPU and queue delays |
+| Resource-intensive reports | **Background workers + lower priority** | Separate noncritical workload |
+
+**Verify with:** correct balance = 90 · transaction failures · p95 / p99 request latency
+
+A SQL arithmetic UPDATE on one row is protected by the database's locking and transaction semantics; a real money transfer needs more checks.""")],
         "body": _design_table([
             ("What must run?", "Short request handlers (ATM, mobile, web) and long batch jobs"),
             ("What must be protected?", "Account balances: transactions / isolation, no lost update, no double spending"),
@@ -2934,7 +3113,8 @@ SECTOR_SLIDES = [
         "qa": [("İki çekirdek bankayı daha hızlı yapar mı?",
                 "Farklı hesaplara gelen işlemler paralel hızlanır. Aynı hesabı güncelleyenler kilit yüzünden sırayla çalışır.",
                 "Do two cores make the bank faster?",
-                "Requests for different accounts speed up in parallel. Requests for the same account still take turns because of the lock.")],
+                "Requests for different accounts speed up in parallel. Requests for the same account still take turns because of the lock."),
+               ('Round Robin kayıp güncellemeyi (lost update) önleyebilir mi?', 'Hayır. Scheduling ve transaction tutarlılığı farklı problemleri çözer. RR yalnızca kimin ne zaman çalışacağını belirler; doğru bakiyeyi transaction / kilit sağlar.', 'Can Round Robin prevent a lost update?', 'No. Scheduling and transactional consistency solve different problems. RR only decides who runs when; the correct balance comes from transactions and locks.')],
     },
     # ======================= Robotic surgery =======================
     {
@@ -2999,6 +3179,17 @@ SECTOR_SLIDES = [
         "kicker": "Robotic surgery · Design decision",
         "board": ["V15_1"],
         "title": "Robotic surgery: deadlines, not throughput",
+        "sections": [("Real mechanisms: problem → mechanism → why", """| Problem | Real mechanism | Why |
+| --- | --- | --- |
+| Control task risks a deadline miss | **Real-time scheduling (fixed priority / EDF)** | Supports schedulability analysis |
+| Low-priority lock holder blocks the critical task | **Priority inheritance / priority ceiling** | Bounds priority inversion |
+| Unbounded memory or I/O delay | **Preallocation, memory locking, bounded I/O** | Reduces timing uncertainty |
+| Overrun / missed deadline | **Watchdog + deadline monitor** | Detect and respond to faults |
+| Unsafe command despite timely CPU | **Independent safety controller / interlocks** | Safety is not delegated to the scheduler |
+
+**Verify with:** deadline misses · worst-case response time · jitter · safety event count
+
+A teaching example, not design or certification advice for a medical device. A hard real-time guarantee never rests on a policy name alone.""")],
         "body": _design_table([
             ("What must run?", "Sensor → control → actuator loop, camera/vision, logging"),
             ("What must be protected?", "Shared robot state and commands, with short, bounded critical sections"),
@@ -3012,7 +3203,8 @@ SECTOR_SLIDES = [
         "qa": [("Bu sistemde neyi optimize ederiz?",
                 "Ortalama bekleme süresini değil, son tarihleri. Bir deadline kaçırmak güvenlik hatasıdır.",
                 "What do we optimize in this system?",
-                "Deadlines, not average waiting time. Missing one deadline is a safety failure.")],
+                "Deadlines, not average waiting time. Missing one deadline is a safety failure."),
+               ('RR q=1 güvenli bir ameliyatı garanti eder mi?', 'Hayır. Zamanlama analizi, sistem doğrulaması ve bağımsız güvenlik önlemleri (watchdog, interlock) gerekir. Düşük ortalama yanıt süresi en kötü durumu garanti etmez.', 'Is RR q=1 sufficient to guarantee safe surgery?', 'No. Timing analysis, system validation and independent safeguards (watchdog, interlocks) are needed. A low average response time does not bound the worst case.')],
     },
     # ======================= Ticket reservation =======================
     {
@@ -3077,6 +3269,16 @@ SECTOR_SLIDES = [
         "kicker": "Online ticket reservation · Design decision",
         "board": ["V16_1"],
         "title": "Ticket reservation: fast AND never sell one seat twice",
+        "sections": [("Real mechanisms: problem → mechanism → why", """| Problem | Real mechanism | Why |
+| --- | --- | --- |
+| Two customers claim the same seat | **DB transaction + unique constraint / atomic update** | Guarantee a single successful claim |
+| Payment is slow or fails | **Reservation state + expiry + idempotency** | Avoid indefinite holds and duplicates |
+| A burst overloads the application | **Bounded request queue + backpressure** | Protect capacity and tail latency |
+| Customer service vs batch analytics | **Worker isolation + appropriate priorities** | Keep online requests responsive |
+
+**Verify with:** oversold seats = 0 · successful claims · p99 reservation latency
+
+Idempotency: retrying the same payment request (same key) must not create a second purchase.""")],
         "body": _design_table([
             ("What must run?", "Many short request handlers in a worker pool"),
             ("What must be protected?", "Each seat: atomic allocation, database constraints"),
@@ -3090,7 +3292,8 @@ SECTOR_SLIDES = [
         "qa": [("Bu sistemde scheduler neyi optimize etmeli?",
                 "Yanıt süresini ve adaleti: patlama anında her kullanıcı kısa sürede yanıt almalı.",
                 "What should the scheduler optimize here?",
-                "Response time and fairness: during a burst every user should get a quick answer.")],
+                "Response time and fairness: during a burst every user should get a quick answer."),
+               ('Tek başına SJF iki alıcının aynı koltuğu almasını engeller mi?', 'Hayır. Atomik veritabanı durum geçişleri gerekir (koşullu UPDATE, unique constraint, transaction). Scheduler yalnızca sırayı değiştirir.', 'Would SJF alone stop two buyers from obtaining the same seat?', 'No. Atomic database state transitions are required (conditional UPDATE, unique constraint, transaction). The scheduler only changes the order.')],
     },
     # ======================= Video streaming =======================
     {
@@ -3151,6 +3354,16 @@ SECTOR_SLIDES = [
         "kicker": "Video streaming · Design decision",
         "board": ["V17_1"],
         "title": "Video streaming: smooth playback",
+        "sections": [("Real mechanisms: problem → mechanism → why", """| Problem | Real mechanism | Why |
+| --- | --- | --- |
+| A network read would block playback | **Asynchronous / nonblocking I/O** | Keep the player responsive |
+| Variable packet arrival timing | **Jitter / playback buffer** | Absorb temporary network variation |
+| The decoder competes with other tasks | **Worker threads + suitable scheduling** | Run decode independently |
+| Shared producer / consumer buffer | **Mutex + condition variable / queues** | Coordinate available data and space |
+
+**Verify with:** rebuffering ratio · dropped frames · playback start-up delay · frame time
+
+Buffering trades start-up latency for resilience. GPU decoding is possible and not modelled here.""")],
         "body": _design_table([
             ("What must run?", "Network (producer, I/O-bound), decoder/renderer (consumer, CPU-bound), background work"),
             ("What must be protected?", "The shared buffer: mutex + condition variables (or semaphores)"),
@@ -3164,10 +3377,77 @@ SECTOR_SLIDES = [
         "qa": [("Bu dört sistemin hangisinde en önemli hedef deadline, hangisinde doğruluk?",
                 "Robotik cerrahi ve videoda deadline (kontrol periyodu, kare zamanı). Banka ve bilette doğruluk (kayıp güncelleme ve çift satış olmamalı); ardından yanıt süresi.",
                 "In which systems is the main goal a deadline, and in which correctness?",
-                "Robotic surgery and video: deadlines (control period, frame time). Banking and tickets: correctness (no lost update, no double booking), then response time.")],
+                "Robotic surgery and video: deadlines (control period, frame time). Banking and tickets: correctness (no lost update, no double booking), then response time."),
+               ("Daha küçük bir CPU quantum'u dengesiz ağ bant genişliğini çözer mi?", 'Hayır. Darboğaz CPU değil ağ; buffering ve asenkron I/O bu farklı darboğazı çözer.', 'Does a smaller CPU quantum solve unstable network bandwidth?', 'No. The bottleneck is the network, not the CPU; buffering and asynchronous I/O address that different bottleneck.')],
+    },
+    # ======================= Video rendering =======================
+    {
+        "kicker": f"Video rendering · {S2}",
+        "title": "Video rendering: static split vs a shared work queue",
+        "body": """
+        Thousands of largely independent, CPU-intensive frames; some frames are much heavier than others.
+        <b>Predict:</b> with 4 workers on 4 cores, does giving each worker a fixed block of frames keep every core busy?
+        """,
+        "code": (("app", "Application code · shared work queue", APP_RENDER), None),
+        "demo": "render_split",
+        "flow": "Shared work queue = dynamic load balancing; the queue itself needs synchronization (atomic counter or mutex)",
+        "say": ["Önce düzensiz kareler + statik bölme: bir worker 8 ms'lik ve 6 ms'lik kareleri aldı, diğerleri erken bitip boş kaldı. Sonra paylaşılan kuyruk: boşta kalan worker sıradaki kareyi alıyor, toplam süre kısalıyor.",
+                "Senkronizasyon bağlantısı: kuyruktan kare almak bir read-modify-write; atomic_fetch_add ya da mutex olmazsa iki worker aynı kareyi alabilir ya da bir kare atlanır."],
+        "say_en": ["First uneven frames with a static split: one worker got the 8 ms and 6 ms frames, the others finished early and sat idle. Then the shared queue: an idle worker takes the next frame and the total time drops.",
+                   "Synchronization link: taking a frame from the queue is a read-modify-write; without atomic_fetch_add or a mutex two workers may take the same frame or skip one."],
+        "qa": [("Work stealing nedir?",
+                "Her worker'ın kendi kuyruğu vardır; işi biten worker başka bir worker'ın kuyruğundan iş çalar. Amaç, paylaşılan tek kuyruğun kilit çakışması olmadan yükü dengelemektir. Demodaki paylaşılan kuyruk aynı fikrin basit hali.",
+                "What is work stealing?",
+                "Each worker has its own queue; a worker that runs out of work steals from another worker's queue. The goal is load balance without contention on a single shared queue. The shared queue in the demo is the simple form of the same idea.")],
     },
     {
-        "kicker": "Engineering decisions · 1/4 · PPT slide 87",
+        "kicker": f"Video rendering · {S3}",
+        "title": "Video rendering: how many workers?",
+        "body": """
+        4 cores, 16 frames × 3 ms. <b>Predict:</b> does 32 workers finish faster than 4?
+        Try 1, 4, 8 and 32 workers and watch the context switches (⇄) in the tick table.
+        """,
+        "demo": "render_workers",
+        "flow": "Bounded concurrency: about one CPU-bound worker per usable core, then measure",
+        "say": ["1 worker: üç çekirdek boş, 48 ms. 4 worker: her çekirdekte bir worker, 12 ms, hiç switch yok. 8 ya da 32 worker: hız artmıyor, her quantum sonunda switch (⇄) ve soğuk cache maliyeti geliyor.",
+                "Sınıf egzersizindeki '8 çekirdekte 10.000 worker thread' durumu bunun büyük hali: bounded worker pool kullanın, sonra ölçün."],
+        "say_en": ["1 worker: three cores idle, 48 ms. 4 workers: one per core, 12 ms, no switches. 8 or 32 workers: no extra speed; every quantum end brings a switch (⇄) and a cold-cache cost.",
+                   "The '10,000 worker threads on 8 cores' case in the class exercise is the large version of this: use a bounded worker pool, then measure."],
+        "qa": [("Rendering için en küçük RR quantum'u mu kullanmalıyız?",
+                "Hayır. Throughput, overhead, bellek ve adalet birlikte önemli. Küçük quantum switch sayısını artırır; batch işte ilk yanıt süresi değil toplam iş önemlidir.",
+                "Should a rendering batch always use the smallest RR quantum?",
+                "No. Throughput, overhead, memory and fairness all matter. A small quantum increases switches; in a batch job total work matters, not the first response."),
+               ("Python'da neden thread pool değil process pool?",
+                "CPython'da GIL aynı anda yalnızca bir thread'in Python kodu çalıştırmasına izin verir; CPU-bound işte thread'ler çekirdekleri paralel kullanamaz. Process pool her process'e ayrı yorumlayıcı verir. Native/C++ ya da GPU hattında durum farklıdır.",
+                "In Python, why a process pool rather than a thread pool?",
+                "In CPython the GIL lets only one thread run Python code at a time, so CPU-bound threads cannot use the cores in parallel. A process pool gives each process its own interpreter. Native/C++ or GPU pipelines differ.")],
+    },
+    {
+        "kicker": "Video rendering · Design decision",
+        "title": "Video rendering: throughput, not first response",
+        "body": _design_table([
+            ("What must run?", "Thousands of independent CPU-bound frame jobs; output collection"),
+            ("What must be protected?", "The shared work queue / frame counter and the result list"),
+            ("What must be optimized?", "Useful throughput (frames/s) with controlled overhead and memory"),
+            ("Section 2 answer", "Shared work queue with an atomic counter or mutex; work stealing for balance"),
+            ("Section 3 answer", "Bounded pool: about one worker per usable core; batch-friendly scheduling, affinity only if measured"),
+        ]),
+        "sections": [("Real mechanisms: problem → mechanism → why", """| Problem | Real mechanism | Why |
+| --- | --- | --- |
+| Many parallelizable frames | **Process pool / thread pool** | Exploit the available cores |
+| Frames differ in cost | **Dynamic work queue / work stealing** | Reduce imbalance |
+| Too many runnable workers | **Bounded concurrency** | Reduce contention and overhead |
+| Memory-locality bottleneck | **Affinity / NUMA-aware placement (if measured)** | Preserve locality where useful |
+
+**Verify with:** frames / s · total elapsed time · CPU efficiency · context switches""")],
+        "flow": "Throughput system: bounded parallelism + efficient resource use",
+        "say": ["Rendering bir throughput sistemi: kimse ilk kareyi beklemiyor, toplam işin verimli bitmesi önemli. Bu yüzden kısa quantum değil, çekirdek sayısına göre sınırlandırılmış worker havuzu ve dengeli iş dağıtımı.",
+                "Affinity ve NUMA yerleşimini ancak ölçüm bir bellek darboğazı gösterirse düşünün."],
+        "say_en": ["Rendering is a throughput system: nobody waits for the first frame; finishing the total work efficiently matters. So not a short quantum, but a worker pool bounded by the core count and balanced work distribution.",
+                   "Consider affinity and NUMA placement only if measurement shows a memory bottleneck."],
+    },
+    {
+        "kicker": "Engineering decisions · 1/5 · PPT slide 87",
         "title": "Real-world scheduling decisions",
         "body": """
         First ask: <b>what are we trying to optimize?</b> Then: which scheduling approach supports it?
@@ -3182,6 +3462,17 @@ SECTOR_SLIDES = [
         consistency (transactions and synchronization are needed), and high priority alone does not guarantee a deadline in robotic surgery.
         """,
         "flow": "There is no universally best scheduling policy. The best choice depends on requirements, workload and trade-offs.",
+        "sections": [("Cross-case decision matrix: goal → mechanisms → measure", """
+| System | Primary goal | Mechanisms | Measure |
+| --- | --- | --- | --- |
+| Banking | Correctness + latency | Transactions, locks, workers | p99 latency / errors |
+| Video streaming | Smooth playback | Async I/O, buffer, decoder workers | Stalls / dropped frames |
+| Ticket reservation | No double selling | Atomic claims, idempotency, bounded queue | Oversold seats / p99 |
+| Video rendering | High throughput | Bounded pool, work stealing | Frames / s |
+| Robotic surgery | Bounded latency + safety | RT scheduling, priority inheritance, watchdog | Missed deadlines / worst case |
+
+**There is no universally best scheduling algorithm or time quantum.** Do not stick one scheduler name on each system: the same OS can host different application mechanisms.
+""")],
         "say": ["Öğrencilere doğrudan 'hangi algoritmayı seçiyoruz?' demeyin; önce 'hangi özelliği optimize etmeye çalışıyoruz?' diye sorun.",
                 "Bunlar Windows veya Linux'ta seçilecek dört hazır scheduler modu değildir. Gerçek sistemlerde OS politikaları, thread öncelikleri, uygulama mimarisi ve kaynak kısıtları birlikte değerlendirilir.",
                 "Bankacılıkta veri tutarlılığını scheduler tek başına garanti etmez; transaction ve senkronizasyon gerekir. Robotik cerrahide yalnızca yüksek öncelik vermek deadline garantisi sağlamaz. Kesin quantum değeri önermeyin."],
@@ -3194,7 +3485,7 @@ SECTOR_SLIDES = [
                 "No. Linux and Windows do not offer these four rows as ready-made modes. On Linux, for example, normal threads run under the general-purpose scheduler and critical threads may use real-time policies such as SCHED_FIFO; but the real decision combines application architecture, priorities, worker count and resource limits, and is verified by measurement.")],
     },
     {
-        "kicker": "Engineering decisions · 2/4 · PPT slide 88",
+        "kicker": "Engineering decisions · 2/5 · PPT slide 88",
         "title": "How do engineers select a scheduling strategy?",
         "body": """
         <div style='display:flex;gap:10px;flex-wrap:wrap;margin:8px 0'>
@@ -3205,6 +3496,16 @@ SECTOR_SLIDES = [
         <div style='text-align:center;font-weight:700;font-size:1.1rem;margin:12px 0'>Requirements → Metrics → Scheduling strategy → Measurement ↺</div>
         """,
         "flow": "Optimize the system goal, not a single metric.",
+        "sections": [("The engineering principle", """
+**An algorithm is not the goal. Reliable system behaviour is the goal.**
+
+- Correctness → synchronization and transaction guarantees
+- Responsiveness → suitable scheduling + nonblocking architecture
+- Throughput → bounded parallelism + efficient resource use
+- Real-time safety → timing analysis + independent safeguards
+
+*Requirements → Mechanisms → Measurement → Refinement* · Week 4 Threads → Week 5 Synchronization → Week 6 CPU Scheduling.
+""")],
         "say": ["Dört sistemin de CPU'ya ihtiyacı var. Fakat hepsi aynı problemi çözmüyor. Bir masaüstü uygulamasında kullanıcıya hızlı yanıt vermek önemli. Video işlemede toplam işi verimli bitirmek daha önemli olabilir.",
                 "Robotik cerrahide ise bir işlemin hızlı olması tek başına yeterli değil; belirlenen zaman sınırını güvenilir biçimde karşılaması gerekiyor.",
                 "Bu yüzden önce sistemin gereksinimlerini belirliyoruz. Ardından bunları ölçülebilir kriterlere dönüştürüp uygun scheduling yaklaşımını değerlendiriyoruz; sonra ölçüp tekrar değerlendiriyoruz."],
@@ -3213,7 +3514,7 @@ SECTOR_SLIDES = [
                    "So we first state the system's requirements, turn them into measurable criteria, evaluate a suitable scheduling approach, then measure and evaluate again."],
     },
     {
-        "kicker": "Engineering decisions · 3/4 · PPT slide 89 · class exercise",
+        "kicker": "Engineering decisions · 3/5 · PPT slide 89 · class exercise",
         "title": "Class exercise — choose the metric",
         "body": """
         For each case, pick the metric the system must optimize. Students answer first; then click an option to check.
@@ -3225,7 +3526,17 @@ SECTOR_SLIDES = [
                    "Also ask why the wrong options are wrong: minimizing switches is not a goal by itself; an average waiting time does not guarantee a deadline."],
     },
     {
-        "kicker": "Engineering decisions · 4/4 · PPT slide 90",
+        "kicker": "Engineering decisions · 4/5 · class exercise",
+        "title": "Class exercise — choose the actual mechanism",
+        "body": """
+        For each problem: <b>problem → mechanism → evidence (metric)</b>. Discuss in pairs for 2–3 minutes, then click to check.
+        """,
+        "demo": "mechanism_exercise",
+        "say": ["Önce öğrenciler 2–3 dakika tartışsın. Cevaplar: son koltuk → atomik DB transaction / constraint; donan yayın → async I/O ve buffering; 8 çekirdekte 10.000 thread → bounded worker pool; düşük öncelikli görevin kilidini bekleyen kontrolcü → priority inheritance / ceiling; raporun yavaşlattığı bakiye istekleri → arka plan izolasyonu + duyarlı scheduling, p99 ölçümü."],
+        "say_en": ["Let students discuss for 2–3 minutes first. Answers: last seat → atomic DB transaction / constraint; frozen stream → async I/O and buffering; 10,000 threads on 8 cores → bounded worker pool; controller waiting on a low-priority lock → priority inheritance / ceiling; report slowing balance requests → background isolation + responsive scheduling, measured with p99."],
+    },
+    {
+        "kicker": "Engineering decisions · 5/5 · PPT slide 90",
         "title": "Who actually makes the scheduling decision?",
         "body": """
         Application developers do not set the Linux or Windows kernel quantum directly.
@@ -3286,19 +3597,57 @@ def render_metric_exercise(key):
     st.button("Reset exercise", key=f"{key}_reset", on_click=_reset)
 
 
+MECHANISM_EXERCISE = [
+    ("1. Two users pay for the last available seat at the same time.",
+     ["Shorter Round Robin quantum", "Atomic DB transaction / unique constraint", "More CPU cores"], 1, "oversold seats = 0"),
+    ("2. A streaming app freezes while waiting for network data.",
+     ["Asynchronous I/O + playback buffer", "Higher priority for the decoder only", "Shortest Job First"], 0, "rebuffering ratio, stalls"),
+    ("3. A batch renderer creates 10,000 worker threads on 8 cores.",
+     ["Smaller time quantum", "Bounded worker pool (about one per core)", "Spinlocks around every frame"], 1, "frames/s, context switches"),
+    ("4. A high-priority controller waits on a lock held by a low-priority task.",
+     ["Priority inheritance / priority ceiling", "Round Robin with q = 1", "A bigger buffer"], 0, "worst-case response time, missed deadlines"),
+    ("5. A banking report makes short balance requests feel slow.",
+     ["Remove the database transaction", "Background isolation + responsive (preemptive) scheduling", "FCFS for everything"], 1, "p95 / p99 request latency"),
+]
+
+
+def render_mechanism_exercise(key):
+    keys = [f"{key}_m{i}" for i in range(len(MECHANISM_EXERCISE))]
+    answered = sum(1 for k in keys if st.session_state.get(k) is not None)
+    correct = 0
+    st.markdown(f"**Class Exercise — Choose the Actual Mechanism** · {answered}/{len(MECHANISM_EXERCISE)} answered")
+    for k, (q, opts, ans, metric) in zip(keys, MECHANISM_EXERCISE):
+        choice = st.radio(q, opts, index=None, key=k)
+        if choice is not None:
+            if opts.index(choice) == ans:
+                correct += 1
+                st.success(f"Correct. Evidence to measure: {metric}.")
+            else:
+                st.error(f"Not this one. Mechanism: {opts[ans]} · evidence: {metric}.")
+    if answered == len(MECHANISM_EXERCISE):
+        st.info(f"{correct}/{len(MECHANISM_EXERCISE)} correct. Don't start by choosing an algorithm; start by identifying the engineering problem.")
+
+    def _reset():
+        for k in keys:
+            st.session_state[k] = None
+    st.button("Reset exercise", key=f"{key}_reset", on_click=_reset)
+
+
 SECTOR_DEMOS = {
     "bank": render_bank_demo, "bank_sched": render_bank_sched_demo,
     "robot_lock": render_robot_inversion_demo, "robot_sched": render_robot_sched_demo,
     "ticket": render_ticket_demo, "ticket_sched": render_ticket_sched_demo,
     "stream": render_stream_demo, "stream_sched": render_stream_sched_demo,
     "metric_exercise": render_metric_exercise,
+    "mechanism_exercise": render_mechanism_exercise,
+    "render_split": render_frame_split_demo, "render_workers": render_worker_count_demo,
 }
 
 
 def render_sector_mode():
     st.header("🏭 Real-World Systems")
-    st.caption("Lecture Mode for the four architectures in the Week 6 notes. Each system has a Section 2 · Synchronization demo, "
-               "a Section 3 · CPU Scheduling demo and a design decision. Slides 14–17: engineering decisions (after Demo 4).")
+    st.caption("Lecture Mode for five real-world architectures. Each system has a Section 2 · Synchronization demo, "
+               "a Section 3 · CPU Scheduling demo and a design decision. Slides 17–21: engineering decisions (after Demo 4).")
     render_deck("sector", SECTOR_SLIDES, SECTOR_DEMOS)
 
 

@@ -13,7 +13,7 @@ Live: https://damlasslan-os-exercise.streamlit.app/
 | 1 Process States | OSTEP `process-run.py` with parameter explanations (what they mean, real-life examples, how to measure) |
 | 2 Threads & Data Race | 2a thread-level scheduling simulator · 2b lost update (table + OSTEP `x86.py`) · 2c real measurement of `real/thread_demo.c` on the server |
 | 3 CPU Scheduling | FCFS / SJF / Round Robin Gantt charts for 2–4 processes |
-| 4 Real-World Systems | Banking, robotic surgery, ticket reservation, video streaming — each with a synchronization demo and a scheduling demo; then four engineering-decision slides (criteria per system, decision matrix, an interactive "choose the metric" exercise, who makes the scheduling decision) |
+| 4 Real-World Systems | Banking, robotic surgery, ticket reservation, video streaming, video rendering — each with a synchronization demo, a scheduling demo (with tick tables) and the real mechanisms; then four engineering-decision slides (criteria per system, decision matrix, an interactive "choose the metric" exercise, who makes the scheduling decision) |
 | Instructor Notes | Teaching order and the four-layer pattern |
 
 Every live demo follows four layers: **application code → OS kernel pseudocode → run on site → observed result**.

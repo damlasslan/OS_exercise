@@ -12,9 +12,9 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 | --- | --- | --- | --- |
 | 00–45 | 1–28 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling: roles and snapshot, I/O-bound ≠ CPU-free, activities that do not execute as CPU threads, application vs OS vs hardware (optional: PPT 127–128 measure it yourself) |
 | 45–70 | 29–45 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) (optional: PPT 129–130 Week 5 tools seen by the scheduler, spinlock vs mutex) |
-| 70–100 | 46–67 | 14 + Real-World | Four real systems (synchronization + scheduling), preemption; Round Robin is first named on LM 14 |
+| 70–100 | 46–67 | 14 + Real-World 1–16 | Five real systems (synchronization + scheduling, real mechanisms, video rendering), preemption; Round Robin is first named on LM 14 |
 | 100–110 | — | — | Break |
-| 110–160 | 68–111 | 15–20 + Real-World 14–17 | FCFS, SJF, SRTF, Demo 3, Demo 4 (which quantum performs best?), engineering decisions (PPT 86–90), Priority, MLFQ, metrics, practice |
+| 110–160 | 68–111 | 15–20 + Real-World 17–21 | FCFS, SJF, SRTF, Demo 3, Demo 4 (which quantum performs best?), engineering decisions (PPT 86–90), Priority, MLFQ, metrics, practice |
 | 160–180 | 112–126 | 21–22 | Multicore, bank example, wrap-up |
 
 ## Key messages
@@ -29,4 +29,5 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 - Each policy asks one question — FCFS: who came first? SJF: who has the shortest job? RR: who is next in the queue? RR does not favour short jobs; it favours turn-taking (Demo 3).
 - Measure first: `real ≈ user + sys` → CPU-bound; `real ≫ user + sys` → the program waits — find out where (I/O, lock, sleep, run queue).
 - There is no universally best scheduling policy: the best choice depends on requirements, workload and trade-offs. Best response time ≠ best overall performance (Demo 4: q = 1 has the most switches); quantum size is an engineering trade-off; developers design the workload, the OS schedules it.
+- Don't start by choosing an algorithm; start by identifying the engineering problem: Problem → Requirement → Mechanism → Verification (five real systems incl. video rendering; complementary deck Week6_Five_Engineering_Cases.pptx).
 - Scheduling ≠ synchronization: speed and timing come from the scheduler, correctness from locks, transactions and atomic operations.
