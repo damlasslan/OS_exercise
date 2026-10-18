@@ -1598,6 +1598,7 @@ SECTOR_SLIDES = [
     # ======================= Banking =======================
     {
         "kicker": f"Banking · {S2}",
+        "board": ["V14_1"],
         "title": "Banking: two requests, one account",
         "body": """
         An ATM deposit (<b>+10</b>) and a mobile transfer (<b>−20</b>) hit the same account (balance <b>100</b>) at the same time.
@@ -1623,6 +1624,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": f"Banking · {S3}",
+        "board": ["V14_1"],
         "title": "Banking: ATM customers behind a batch report",
         "body": """
         At 0 ms a 10 ms <b>end-of-day report</b> starts. Three short requests arrive at 1, 2 and 3 ms (ATM 1 ms, mobile 2 ms, ATM 1 ms).
@@ -1651,6 +1653,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": "Banking · Design decision",
+        "board": ["V14_1"],
         "title": "Banking: correct first, then responsive",
         "body": _design_table([
             ("What must run?", "Short request handlers (ATM, mobile, web) and long batch jobs"),
@@ -1670,6 +1673,7 @@ SECTOR_SLIDES = [
     # ======================= Robotic surgery =======================
     {
         "kicker": f"Robotic surgery · {S2}",
+        "board": ["V15_1"],
         "title": "Robotic surgery: priority inversion",
         "body": """
         <b>Logging</b> (priority 1) and <b>motor control</b> (priority 3) share the robot-state lock. <b>Camera</b> (priority 2) does not need it.
@@ -1701,6 +1705,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": f"Robotic surgery · {S3}",
+        "board": ["V15_1"],
         "title": "Robotic surgery: Round Robin vs fixed priority",
         "body": """
         Motor control: <b>1 ms</b> every <b>4 ms</b>. Camera: <b>4 ms</b> every <b>8 ms</b>. Logging: background work.
@@ -1726,6 +1731,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": "Robotic surgery · Design decision",
+        "board": ["V15_1"],
         "title": "Robotic surgery: deadlines, not throughput",
         "body": _design_table([
             ("What must run?", "Sensor → control → actuator loop, camera/vision, logging"),
@@ -1745,6 +1751,7 @@ SECTOR_SLIDES = [
     # ======================= Ticket reservation =======================
     {
         "kicker": f"Online ticket reservation · {S2}",
+        "board": ["V16_1"],
         "title": "Ticket reservation: the last seat",
         "body": """
         Two users try to buy the <b>last seat (A12)</b> at the same moment, served by two workers on two cores.
@@ -1769,6 +1776,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": f"Online ticket reservation · {S3}",
+        "board": ["V16_1"],
         "title": "Ticket reservation: the burst at sale opening",
         "body": """
         When sales open, <b>8 requests</b> (2 ms of CPU each) arrive at the same moment. One worker runs per core.
@@ -1799,6 +1807,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": "Online ticket reservation · Design decision",
+        "board": ["V16_1"],
         "title": "Ticket reservation: fast AND never sell one seat twice",
         "body": _design_table([
             ("What must run?", "Many short request handlers in a worker pool"),
@@ -1818,6 +1827,7 @@ SECTOR_SLIDES = [
     # ======================= Video streaming =======================
     {
         "kicker": f"Video streaming · {S2}",
+        "board": ["V17_1"],
         "title": "Video streaming: producer, consumer and the buffer",
         "body": """
         A <b>network thread</b> downloads chunks into a buffer; a <b>decoder thread</b> takes one chunk per tick.
@@ -1846,6 +1856,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": f"Video streaming · {S3}",
+        "board": ["V17_1"],
         "title": "Video streaming: frame deadlines vs a background update",
         "body": """
         Every <b>5 ms</b> a frame is due; decoding it takes <b>3 ms</b>. A background app update needs <b>20 ms</b> of CPU.
@@ -1870,6 +1881,7 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": "Video streaming · Design decision",
+        "board": ["V17_1"],
         "title": "Video streaming: smooth playback",
         "body": _design_table([
             ("What must run?", "Network (producer, I/O-bound), decoder/renderer (consumer, CPU-bound), background work"),

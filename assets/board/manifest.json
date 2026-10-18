@@ -356,5 +356,109 @@
    "Bank example: T1 +10 on Core 1, T2 −20 on Core 2. Balance 100. Without a mutex, what can the result be?",
    "Two cores do not guarantee correctness. Scheduling gives time and place; synchronization gives correctness."
   ]
+ },
+ {
+  "code": "V14",
+  "title": "Banking: two dimensions",
+  "slides": "40, RW 2-4",
+  "board": 1,
+  "boards": 1,
+  "img": "V14_1.jpg",
+  "caps": [
+   "Sol yarı senkronizasyon: ATM +10 ve mobil −20 aynı hesaba, bakiye 100.",
+   "İkisi de 100'ü okur ve kendi sonucunu yazar. En son yazan kazanır.",
+   "Çözüm uygulamada: mutex veya veritabanı transaction'ı. Sonuç her zaman 90.",
+   "Sağ yarı scheduling: 10 ms'lik gün sonu raporu çalışırken üç kısa istek geliyor.",
+   "FCFS: kısa istekler raporun arkasında bekliyor. Ortalama yanıt 9,33 ms.",
+   "Round Robin, quantum 2: kısa istekler 2 ms içinde CPU alıyor. Ortalama yanıt 2 ms; rapor 14'te bitiyor.",
+   "Tasarım kararı: önce doğruluk (kilit), sonra hızlı yanıt (zaman paylaşımı)."
+  ],
+  "caps_en": [
+   "Left half, synchronization: an ATM +10 and a mobile −20 on the same account, balance 100.",
+   "Both read 100 and write their own result. The last writer wins.",
+   "The fix is in the application: a mutex or a database transaction. The result is always 90.",
+   "Right half, scheduling: three short requests arrive while a 10 ms end-of-day report is running.",
+   "FCFS: the short requests wait behind the report. Average response 9.33 ms.",
+   "Round Robin, quantum 2: short requests get the CPU within 2 ms. Average response 2 ms; the report finishes at 14.",
+   "Design decision: correctness first (lock), then fast response (time sharing)."
+  ]
+ },
+ {
+  "code": "V15",
+  "title": "Robotic surgery: two dimensions",
+  "slides": "41, RW 5-7",
+  "board": 1,
+  "boards": 1,
+  "img": "V15_1.jpg",
+  "caps": [
+   "Sol yarı: Logging (öncelik 1) kilidi tutuyor, motor (öncelik 3) aynı kilidi istiyor, kamera (öncelik 2) kilit istemiyor.",
+   "Öncelik mirası yokken kamera L'yi kesiyor; motor dolaylı olarak kamerayı bekliyor ve 11'de bitiyor.",
+   "Öncelik mirasıyla L geçici olarak öncelik 3 alıyor, kritik bölümü bitiriyor; motor 6'da bitiyor.",
+   "Sağ yarı: motor her 4 ms'de 1 ms, kamera her 8 ms'de 4 ms, log 8 ms arka plan işi.",
+   "Round Robin, quantum 3: motor kuyrukta bekliyor ve 2 deadline kaçırıyor.",
+   "Sabit öncelikte motor her periyot başında diğer işleri kesiyor: hiç deadline kaçırmıyor.",
+   "Tasarım kararı: deadline'lar için sabit öncelik, kilitler için öncelik mirası."
+  ],
+  "caps_en": [
+   "Left half: logging (priority 1) holds the lock, motor (priority 3) wants the same lock, camera (priority 2) needs no lock.",
+   "Without priority inheritance the camera preempts L; motor indirectly waits for the camera and finishes at 11.",
+   "With priority inheritance L temporarily runs at priority 3 and finishes its critical section; motor finishes at 6.",
+   "Right half: motor 1 ms every 4 ms, camera 4 ms every 8 ms, logging 8 ms of background work.",
+   "Round Robin, quantum 3: motor waits in the queue and misses 2 deadlines.",
+   "With fixed priority, motor preempts the others at the start of every period: no deadline is missed.",
+   "Design decision: fixed priorities for deadlines, priority inheritance for locks."
+  ]
+ },
+ {
+  "code": "V16",
+  "title": "Ticket reservation: two dimensions",
+  "slides": "42, RW 8-10",
+  "board": 1,
+  "boards": 1,
+  "img": "V16_1.jpg",
+  "caps": [
+   "Sol yarı: son koltuk A12. İki kullanıcı aynı anda, iki çekirdekte satın almaya çalışıyor.",
+   "İkisi de önce kontrol ediyor, ikisi de boş görüyor, ikisi de satın alıyor.",
+   "Çözüm: tek atomik koşullu UPDATE. İkinci istek 0 satır değiştirir ve 'tükendi' alır.",
+   "Sağ yarı: satış açılınca 8 istek aynı anda geliyor, her biri 2 ms.",
+   "Tek çekirdekte istekler sırayla: ortalama yanıt 7 ms, son istek 16'da bitiyor.",
+   "Dört çekirdekte dört worker aynı anda çalışıyor: ortalama yanıt 1 ms, son istek 4'te bitiyor.",
+   "Ama dört çekirdek aynı anda dört worker demek: çift satış ihtimali artıyor.",
+   "Tasarım kararı: hız çekirdeklerden ve scheduler'dan, doğruluk veritabanından gelir."
+  ],
+  "caps_en": [
+   "Left half: the last seat A12. Two users try to buy it at the same moment on two cores.",
+   "Both check first, both see it free, both buy it.",
+   "Fix: one atomic conditional UPDATE. The second request changes 0 rows and gets 'sold out'.",
+   "Right half: when sales open, 8 requests arrive at the same moment, 2 ms each.",
+   "On one core the requests run one after another: average response 7 ms, the last finishes at 16.",
+   "On four cores four workers run at the same time: average response 1 ms, the last finishes at 4.",
+   "But four cores mean four workers at the same instant: double booking becomes more likely.",
+   "Design decision: speed comes from the cores and the scheduler, correctness from the database."
+  ]
+ },
+ {
+  "code": "V17",
+  "title": "Video streaming: two dimensions",
+  "slides": "43, RW 11-13",
+  "board": 1,
+  "boards": 1,
+  "img": "V17_1.jpg",
+  "caps": [
+   "Sol yarı: network thread buffer'ı dolduruyor, decoder her tık bir parça alıyor. Buffer 4, ağ 5–10. tıklarda duruyor.",
+   "Buffer boşalınca decoder cond_wait ile uyuyor: 3 tık takılma. Buffer 8 olunca yalnızca 1 tık.",
+   "Sağ yarı: her 5 ms'de bir kare, decode 3 ms. Arka planda 20 ms'lik bir güncelleme işi var.",
+   "Adil Round Robin'de güncelleme, kare zamanı gelmişken CPU'yu alıyor: 30 ms'de 5 kare gecikiyor.",
+   "Decoder öncelikli olunca hiç kare düşmüyor; güncelleme aradaki boşluklarda ilerliyor.",
+   "Tasarım kararı: condition variable'lı sınırlı buffer ve decoder'a öncelik."
+  ],
+  "caps_en": [
+   "Left half: the network thread fills the buffer, the decoder takes one chunk per tick. Buffer 4, the network stops at ticks 5–10.",
+   "When the buffer is empty the decoder sleeps in cond_wait: 3 stall ticks. With a buffer of 8, only 1.",
+   "Right half: a frame every 5 ms, decoding takes 3 ms. A 20 ms update runs in the background.",
+   "With fair Round Robin the update takes the CPU while a frame is due: 5 frames are late in 30 ms.",
+   "With decoder priority no frame is dropped; the update makes progress in the gaps.",
+   "Design decision: a bounded buffer with condition variables, and priority for the decoder."
+  ]
  }
 ]
