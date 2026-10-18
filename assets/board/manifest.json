@@ -2,7 +2,7 @@
  {
   "code": "V01",
   "title": "Process states",
-  "slides": "10, 18-20, 31-32",
+  "slides": "10, 18-21, 36-37",
   "board": 1,
   "boards": 3,
   "img": "V01_1.jpg",
@@ -26,7 +26,7 @@
  {
   "code": "V01",
   "title": "Process states",
-  "slides": "10, 18-20, 31-32",
+  "slides": "10, 18-21, 36-37",
   "board": 2,
   "boards": 3,
   "img": "V01_2.jpg",
@@ -44,7 +44,7 @@
  {
   "code": "V01",
   "title": "Process states",
-  "slides": "10, 18-20, 31-32",
+  "slides": "10, 18-21, 36-37",
   "board": 3,
   "boards": 3,
   "img": "V01_3.jpg",
@@ -66,7 +66,7 @@
  {
   "code": "V02",
   "title": "Concurrency vs parallelism",
-  "slides": "4, 22-28",
+  "slides": "4, 27-33",
   "board": 1,
   "boards": 1,
   "img": "V02_1.jpg",
@@ -88,7 +88,7 @@
  {
   "code": "V03",
   "title": "Lost update: two threads, one balance",
-  "slides": "3, 33-37",
+  "slides": "3, 38-42",
   "board": 1,
   "boards": 2,
   "img": "V03_1.jpg",
@@ -112,7 +112,7 @@
  {
   "code": "V03",
   "title": "Lost update: two threads, one balance",
-  "slides": "3, 33-37",
+  "slides": "3, 38-42",
   "board": 2,
   "boards": 2,
   "img": "V03_2.jpg",
@@ -130,7 +130,7 @@
  {
   "code": "V04",
   "title": "Same two jobs, three policies",
-  "slides": "50-55",
+  "slides": "55-60",
   "board": 1,
   "boards": 1,
   "img": "V04_1.jpg",
@@ -154,7 +154,7 @@
  {
   "code": "V05",
   "title": "FCFS vs SJF  (8 / 4 / 2)",
-  "slides": "66-72",
+  "slides": "71-77",
   "board": 1,
   "boards": 1,
   "img": "V05_1.jpg",
@@ -176,7 +176,7 @@
  {
   "code": "V06",
   "title": "SRTF step by step",
-  "slides": "74, 78",
+  "slides": "79, 83",
   "board": 1,
   "boards": 1,
   "img": "V06_1.jpg",
@@ -204,7 +204,7 @@
  {
   "code": "V07",
   "title": "Round Robin q = 2: the ready queue",
-  "slides": "79-80",
+  "slides": "84-85",
   "board": 1,
   "boards": 1,
   "img": "V07_1.jpg",
@@ -232,7 +232,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "60-63, 75-77",
+  "slides": "65-68, 80-82",
   "board": 1,
   "boards": 2,
   "img": "V08_1.jpg",
@@ -254,7 +254,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "60-63, 75-77",
+  "slides": "65-68, 80-82",
   "board": 2,
   "boards": 2,
   "img": "V08_2.jpg",
@@ -270,7 +270,7 @@
  {
   "code": "V09",
   "title": "Priority scheduling and starvation",
-  "slides": "83-85",
+  "slides": "88-90",
   "board": 1,
   "boards": 1,
   "img": "V09_1.jpg",
@@ -292,7 +292,7 @@
  {
   "code": "V10",
   "title": "MLFQ: a mini story",
-  "slides": "86-90",
+  "slides": "91-95",
   "board": 1,
   "boards": 1,
   "img": "V10_1.jpg",
@@ -318,7 +318,7 @@
  {
   "code": "V11",
   "title": "One task, three clocks",
-  "slides": "91-92",
+  "slides": "96-97",
   "board": 1,
   "boards": 1,
   "img": "V11_1.jpg",
@@ -340,7 +340,7 @@
  {
   "code": "V12",
   "title": "Practice solution  (6 / 2 / 4)",
-  "slides": "93-94",
+  "slides": "98-99",
   "board": 1,
   "boards": 1,
   "img": "V12_1.jpg",
@@ -348,19 +348,19 @@
    "Alıştırma: P1 6, P2 2, P3 4 ms, hepsi zaman 0'da. Önce öğrenciler çizsin.",
    "FCFS: P1 0–6, P2 6–8, P3 8–12. Bekleme 0, 6, 8.",
    "SJF: P2 0–2, P3 2–6, P1 6–12. Bekleme 0, 2, 6.",
-   "Sitede kontrol: Lecture Mode slayt 18'de bu değerler hazır. FCFS ve SJF'yi çalıştırın."
+   "Sitede kontrol: Lecture Mode slayt 20'de bu değerler hazır. FCFS ve SJF'yi çalıştırın."
   ],
   "caps_en": [
    "Practice: P1 6, P2 2, P3 4 ms, all at time 0. Let students draw it first.",
    "FCFS: P1 0–6, P2 6–8, P3 8–12. Waiting 0, 6, 8.",
    "SJF: P2 0–2, P3 2–6, P1 6–12. Waiting 0, 2, 6.",
-   "Check on the site: Lecture Mode slide 18 has these values preset. Run FCFS and SJF."
+   "Check on the site: Lecture Mode slide 20 has these values preset. Run FCFS and SJF."
   ]
  },
  {
   "code": "V13",
   "title": "Multicore: balance vs locality",
-  "slides": "99-106",
+  "slides": "104-111",
   "board": 1,
   "boards": 1,
   "img": "V13_1.jpg",
@@ -382,7 +382,7 @@
  {
   "code": "V14",
   "title": "Banking: two dimensions",
-  "slides": "40, RW 2-4",
+  "slides": "45, RW 2-4",
   "board": 1,
   "boards": 1,
   "img": "V14_1.jpg",
@@ -408,7 +408,7 @@
  {
   "code": "V15",
   "title": "Robotic surgery: two dimensions",
-  "slides": "41, RW 5-7",
+  "slides": "46, RW 5-7",
   "board": 1,
   "boards": 1,
   "img": "V15_1.jpg",
@@ -434,7 +434,7 @@
  {
   "code": "V16",
   "title": "Ticket reservation: two dimensions",
-  "slides": "42, RW 8-10",
+  "slides": "47, RW 8-10",
   "board": 1,
   "boards": 1,
   "img": "V16_1.jpg",
@@ -462,7 +462,7 @@
  {
   "code": "V17",
   "title": "Video streaming: two dimensions",
-  "slides": "43, RW 11-13",
+  "slides": "48, RW 11-13",
   "board": 1,
   "boards": 1,
   "img": "V17_1.jpg",
@@ -481,6 +481,30 @@
    "With fair Round Robin the update takes the CPU while a frame is due: 5 frames are late in 30 ms.",
    "With decoder priority no frame is dropped; the update makes progress in the gaps.",
    "Design decision: a bounded buffer with condition variables, and priority for the decoder."
+  ]
+ },
+ {
+  "code": "V18",
+  "title": "Thread-level scheduling",
+  "slides": "22-25",
+  "board": 1,
+  "boards": 1,
+  "img": "V18_1.jpg",
+  "caps": [
+   "Bir process, iki worker thread: T1 dosya okuyor, T2 hesap yapıyor. Main thread ikisini de bekliyor.",
+   "OS çalıştırılabilir thread'leri zamanlar: T1 bloke iken çekirdek 0'da T2 çalışıyor.",
+   "Tek çekirdekte zaman çizelgesi: T1 3 tık bloke; bu sırada T2 çalışıyor.",
+   "T1 uyandığında doğrudan RUNNING olmuyor: önce READY, T2'nin dilimi bitince çalışıyor.",
+   "Tahtaya iki cümleyi yazın: bir process tek bir yürütme akışı değildir; bir thread'in bloke olması bütün process'i durdurmaz.",
+   "Son cümle: scheduler çalıştırılabilir thread'leri zamanlar; bloke bir thread aynı process'teki diğerlerini engellemez."
+  ],
+  "caps_en": [
+   "One process, two worker threads: T1 reads a file, T2 computes. The main thread waits for both.",
+   "The OS schedules runnable threads: while T1 is blocked, T2 runs on core 0.",
+   "Timeline on one core: T1 is blocked for 3 ticks; meanwhile T2 runs.",
+   "When T1 wakes it does not become RUNNING directly: first READY, then it runs when T2's slice ends.",
+   "Write two sentences on the board: one process is not one execution flow; one blocked thread does not block the entire process.",
+   "Final sentence: the scheduler schedules runnable threads; a blocked thread does not prevent the others in the same process from running."
   ]
  }
 ]

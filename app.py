@@ -178,12 +178,13 @@ def render_gantt(rows):
 # ---------------------------------------------------------------------------
 def render_process_demo(key_prefix, p0=(1, 0), p1=(4, 100), switch="SWITCH_ON_IO", show_cmd_open=False):
     c1,c2,c3,c4 = st.columns(4)
-    with c1: p0_len = st.number_input("P0 instructions", 1, 20, p0[0], key=f"{key_prefix}_p0len")
-    with c2: p0_cpu = st.slider("P0 CPU probability", 0, 100, p0[1], key=f"{key_prefix}_p0cpu")
-    with c3: p1_len = st.number_input("P1 instructions", 1, 20, p1[0], key=f"{key_prefix}_p1len")
-    with c4: p1_cpu = st.slider("P1 CPU probability", 0, 100, p1[1], key=f"{key_prefix}_p1cpu")
+    with c1: p0_len = st.number_input("P0 instructions", 1, 20, p0[0], key=f"{key_prefix}_p0len", help=PARAM_HELP["len"])
+    with c2: p0_cpu = st.slider("P0 CPU probability", 0, 100, p0[1], key=f"{key_prefix}_p0cpu", help=PARAM_HELP["cpu"])
+    with c3: p1_len = st.number_input("P1 instructions", 1, 20, p1[0], key=f"{key_prefix}_p1len", help=PARAM_HELP["len"])
+    with c4: p1_cpu = st.slider("P1 CPU probability", 0, 100, p1[1], key=f"{key_prefix}_p1cpu", help=PARAM_HELP["cpu"])
     options = ["SWITCH_ON_IO", "SWITCH_ON_END"]
-    sw = st.selectbox("Switch behavior", options, index=options.index(switch), key=f"{key_prefix}_switch")
+    sw = st.selectbox("Switch behavior", options, index=options.index(switch), key=f"{key_prefix}_switch", help=PARAM_HELP["switch"])
+    render_param_explainer()
     cmd_args=["-l", f"{p0_len}:{p0_cpu},{p1_len}:{p1_cpu}", "-S", sw, "-c", "-p"]
     with st.expander("Show the OSTEP command", expanded=show_cmd_open):
         st.code("python cpu-intro/process-run.py " + " ".join(cmd_args), language="bash")
@@ -295,6 +296,9 @@ GLOSSARY = {
     "Starvation": ("Starvation", "A ready job waits indefinitely because others are always chosen first."),
     "Aging": ("Aging", "Gradually raising the priority of a job that has waited long, to prevent starvation."),
     "MLFQ": ("Multi-Level Feedback Queue", "Several priority queues; a job moves down when it uses its full slice and is periodically boosted back to the top."),
+    "Thread": ("Thread", "An execution flow inside a process. Threads of one process share memory but each has its own registers, stack and state."),
+    "Blocking call": ("Blocking call", "A call such as read() or sleep() that can make the thread wait (BLOCKED) without using the CPU."),
+    "pthread_join": ("pthread_join()", "Makes the calling thread wait (BLOCKED) until the given thread has finished."),
     "Mutex": ("Mutual exclusion lock", "Only one thread at a time may hold it; others trying to lock it wait (WAITING)."),
     "Transaction": ("Database transaction", "A group of reads and writes that the database applies atomically and in isolation (all or nothing)."),
     "Lost update": ("Lost update", "Two read-modify-write sequences overlap and one write overwrites the other."),
@@ -582,26 +586,27 @@ SAY_EN = {
         "A real read() does not always block; if the data is cached it returns immediately. The number of C lines does not map one-to-one to OSTEP instructions."],
     5: ["SWITCH_ON_END is not the same as non-preemptive: even a non-preemptive scheduler can run a READY thread when the running one blocks.",
         "SWITCH_ON_IO is not preemption either: the process gives up the CPU because it cannot continue during I/O."],
-    6: ["Run A: at times 2–5 P0 is BLOCKED, but the CPU column shows 1. The CPU is not idle; it runs P1.",
+    6: ["Explain the parameters first: instructions = length of the program, CPU probability = computing or waiting (100 CPU-bound, 0 I/O-bound), switch behavior = when the OS moves to another process.",
+        "Run A: at times 2–5 P0 is BLOCKED, but the CPU column shows 1. The CPU is not idle; it runs P1.",
         "Run B: change only the switch behavior. Total time goes from 7 to 11."],
     7: ["Both runs do the same work. The second takes longer because the I/O wait and P1's CPU work do not overlap.",
         "The second question is today's topic: FCFS, SJF, Round Robin, Priority, MLFQ."],
-    8: ["Cases 1–2 are the top timeline, cases 3–4 the bottom one. Process or thread does not change the timeline."],
-    9: ["The code is correct on its own. The problem appears when the steps of two threads interleave, even on one core."],
-    10: ["The program is three instructions: read, add, write. If the interrupt lands between them, an update is lost.",
+    10: ["Cases 1–2 are the top timeline, cases 3–4 the bottom one. Process or thread does not change the timeline."],
+    11: ["The code is correct on its own. The problem appears when the steps of two threads interleave, even on one core."],
+    12: ["The program is three instructions: read, add, write. If the interrupt lands between them, an update is lost.",
          "The code never changed, only the interrupt timing. A program that relies on timing for correctness is broken."],
-    11: ["On Linux a thread waiting for a lock is put to sleep with a futex. Scheduling ≠ synchronization."],
-    12: ["FCFS: P2 arrived at time 3 but waits until P1 finishes.",
+    13: ["On Linux a thread waiting for a lock is put to sleep with a futex. Scheduling ≠ synchronization."],
+    14: ["FCFS: P2 arrived at time 3 but waits until P1 finishes.",
          "RR q=2: at time 2 P2 has not arrived yet, so P1 continues; at time 4 it is P2's turn."],
-    13: ["The total work is still 14 ms. Only the order changed. A real OS does not know job lengths; it estimates them from the past."],
-    14: ["SRTF is not on the site; draw it on the board. If short jobs keep arriving, a long job can starve."],
-    15: ["The answer is SJF: P3 finishes at time 2, P2 at time 5. But SJF assumes job lengths are known in advance."],
-    16: ["The two P1 boxes at 9–13 and 13–17 are not a real switch; nobody else is in the queue.",
+    15: ["The total work is still 14 ms. Only the order changed. A real OS does not know job lengths; it estimates them from the past."],
+    16: ["SRTF is not on the site; draw it on the board. If short jobs keep arriving, a long job can starve."],
+    17: ["The answer is SJF: P3 finishes at time 2, P2 at time 5. But SJF assumes job lengths are known in advance."],
+    18: ["The two P1 boxes at 9–13 and 13–17 are not a real switch; nobody else is in the queue.",
          "Tiny quantum: everyone gets a turn quickly, but switching costs grow. Huge quantum: RR turns into FCFS."],
-    17: ["Matching the SJF order is a coincidence. Present MLFQ as a strategy, not as implementation detail."],
-    18: ["Give students 5 minutes to draw it on paper, then check on the site."],
-    19: ["Moving is not free: T3's data was in Core 1's cache."],
-    20: ["Exit question: which of today's results came from waiting, which from scheduling, which from shared memory?"],
+    19: ["Matching the SJF order is a coincidence. Present MLFQ as a strategy, not as implementation detail."],
+    20: ["Give students 5 minutes to draw it on paper, then check on the site."],
+    21: ["Moving is not free: T3's data was in Core 1's cache."],
+    22: ["Exit question: which of today's results came from waiting, which from scheduling, which from shared memory?"],
 }
 
 # (question_tr, answer_tr, question_en, answer_en) per Lecture Mode slide
@@ -638,7 +643,15 @@ QA = {
          "SWITCH_ON_IO'ya. Bloke olan thread'in yerine runnable bir thread çalıştırılır.",
          "Which one resembles a modern operating system?",
          "SWITCH_ON_IO: a runnable thread is scheduled when the current thread blocks.")],
-    6: [("P0 I/O beklerken CPU'yu kim kullanır?",
+    6: [("Bu parametreler gerçek hayatta neye karşılık gelir?",
+         "CPU probability 100 = video kodlama, derleme gibi CPU-bound işler; 0 = dosya kopyalama, disk/ağ bekleyen sunucular gibi I/O-bound işler. Instructions işin uzunluğu. SWITCH_ON_IO bugünkü işletim sistemleri; SWITCH_ON_END tek görevli eski sistemler (ör. MS-DOS).",
+         "What do these parameters correspond to in real life?",
+         "CPU probability 100 = CPU-bound work such as video encoding or compiling; 0 = I/O-bound work such as copying files or servers waiting for disk/network. Instructions = length of the job. SWITCH_ON_IO = today's operating systems; SWITCH_ON_END = old single-tasking systems (e.g. MS-DOS)."),
+        ("Gerçek bir programın CPU-bound mı I/O-bound mı olduğunu nasıl anlarız?",
+         "Ölçeriz: time ./program çıktısında user + sys ≈ real ise CPU-bound, real ≫ user + sys ise I/O-bound. top/htop %CPU, vmstat iowait gösterir.",
+         "How do we find out whether a real program is CPU-bound or I/O-bound?",
+         "We measure it: in time ./program, user + sys ≈ real means CPU-bound; real ≫ user + sys means I/O-bound. top/htop show %CPU, vmstat shows iowait."),
+        ("P0 I/O beklerken CPU'yu kim kullanır?",
          "P1. Zaman 2–5 arasında P0 BLOCKED, P1 RUN:cpu ve CPU sütununda 1 var. Sonuç: Total Time 7, CPU %85,71.",
          "While P0 waits for I/O, who uses the CPU?",
          "P1. At times 2–5 P0 is BLOCKED, P1 is RUN:cpu and the CPU column shows 1. Result: total time 7, CPU 85.71%."),
@@ -654,7 +667,7 @@ QA = {
          "Bunu CPU scheduler, politikasına göre seçer: FCFS, SJF, Round Robin, Priority, MLFQ. Bugünün konusu bu.",
          "Q2 · If several processes are READY, which one runs?",
          "The CPU scheduler chooses according to its policy: FCFS, SJF, Round Robin, Priority, MLFQ. That is today's topic.")],
-    8: [("Tek çekirdekte A ve B aynı milisaniyede çalışıyor mu?",
+    10: [("Tek çekirdekte A ve B aynı milisaniyede çalışıyor mu?",
          "Hayır, sırayla çalışıyorlar. Ama ikisi de ilerliyor: bu concurrency.",
          "On one core, do A and B run in the same millisecond?",
          "No, they take turns. But both make progress: that is concurrency."),
@@ -662,11 +675,11 @@ QA = {
          "Evet. Aynı zaman sütununda ikisi de gerçekten çalışıyor: bu parallelism.",
          "And on two cores?",
          "Yes. In the same time column both truly run: that is parallelism.")],
-    9: [("Bu kodda hata var mı?",
+    11: [("Bu kodda hata var mı?",
          "Tek thread'le çalışınca yok. İki thread'de counter++ atomik değil: LOAD ile STORE arasında bir context switch olursa bir artırma kaybolur.",
          "Is there a bug in this code?",
          "Not with one thread. With two threads counter++ is not atomic: a context switch between LOAD and STORE loses one increment.")],
-    10: [("Sayaç 5, iki thread birer kez artırıyor: sonuç 6 mı, 7 mi?",
+    12: [("Sayaç 5, iki thread birer kez artırıyor: sonuç 6 mı, 7 mi?",
           "Doğrusu 7. Adımlar araya girerse (iki thread de 5'i okursa) sonuç 6 olur.",
           "Counter 5, both threads increment once: is the result 6 or 7?",
           "The correct result is 7. If the steps interleave (both threads read 5), the result is 6."),
@@ -674,7 +687,7 @@ QA = {
           "Program üç komut: oku, artır, yaz. Kesme her 3 komutta bir gelince her thread üç adımını kesintisiz bitiriyor ve sonuç 2 oluyor. Bu, programın güvenli olduğu anlamına gelmez; yalnızca bu zamanlamada şanslıyız.",
           "Why is the result correct in x86.py with interrupt interval 3?",
           "The program is three instructions: read, add, write. With an interrupt every 3 instructions, each thread finishes its three steps uninterrupted, giving 2. That does not make the program safe; we are just lucky with this timing.")],
-    11: [("Preempt edilen thread tuttuğu mutex'i bırakır mı?",
+    13: [("Preempt edilen thread tuttuğu mutex'i bırakır mı?",
           "Hayır. CPU'yu kaybetmek kilidi bırakmak demek değil; kilit sahibinde kalır ve diğer thread'ler bekler.",
           "Does a preempted thread release the mutex it holds?",
           "No. Losing the CPU does not release the lock; it stays with its owner and the others wait."),
@@ -682,7 +695,7 @@ QA = {
           "Blocking mutex'te hayır: WAITING durumuna geçer ve uyur. Spinlock'ta ise döngüde CPU harcar.",
           "Does a thread waiting for a lock use the CPU?",
           "With a blocking mutex, no: it goes to WAITING and sleeps. With a spinlock it burns CPU in a loop.")],
-    12: [("P2 zaman 3'te gelince OS P1'i keser mi?",
+    14: [("P2 zaman 3'te gelince OS P1'i keser mi?",
           "FCFS: hayır, P2 7 ms bekler. RR q=2: dilim dolunca, zaman 4'te sıra P2'ye geçer, 1 ms bekler. SRTF: hemen keser, P2 hiç beklemez.",
           "When P2 arrives at time 3, does the OS interrupt P1?",
           "FCFS: no, P2 waits 7 ms. RR q=2: when the slice ends at time 4 it is P2's turn, it waits 1 ms. SRTF: immediately, P2 does not wait at all."),
@@ -690,7 +703,7 @@ QA = {
           "SRTF (0 ms), sonra RR (1 ms), en son FCFS (7 ms).",
           "In which policy does P2 wait least?",
           "SRTF (0 ms), then RR (1 ms), then FCFS (7 ms).")],
-    13: [("FCFS mi SJF mi daha düşük ortalama bekleme verir?",
+    15: [("FCFS mi SJF mi daha düşük ortalama bekleme verir?",
           "SJF: 2,67 ms. FCFS: 6,67 ms. Toplam iş aynı, yalnızca sıra değişti.",
           "Which gives the lower average waiting time, FCFS or SJF?",
           "SJF: 2.67 ms. FCFS: 6.67 ms. Same total work, only the order changed."),
@@ -698,7 +711,7 @@ QA = {
           "Bir işin CPU süresini önceden bilmez; geçmiş davranıştan tahmin eder. Ayrıca kısa işler sürekli gelirse uzun iş aç kalabilir.",
           "Why can't a real OS use pure SJF?",
           "It does not know a job's CPU time in advance; it estimates it from past behavior. Also, a long job can starve if short jobs keep arriving.")],
-    14: [("Zaman 1'de P2 neden P1'i keser?",
+    16: [("Zaman 1'de P2 neden P1'i keser?",
           "P1'in kalan süresi 7 ms, P2'nin ihtiyacı 4 ms. SRTF kalan süresi en kısa olanı seçer.",
           "Why does P2 interrupt P1 at time 1?",
           "P1 has 7 ms left, P2 needs 4 ms. SRTF picks the shortest remaining time."),
@@ -706,11 +719,11 @@ QA = {
           "Starvation: kısa işler sürekli gelirse uzun iş CPU'yu hiç alamayabilir.",
           "What is the risk of SRTF?",
           "Starvation: if short jobs keep arriving, a long job may never get the CPU.")],
-    15: [("P2 ve P3 hangi politikada en erken biter?",
+    17: [("P2 ve P3 hangi politikada en erken biter?",
           "SJF: P3 zaman 2'de, P2 zaman 5'te biter. RR q=4'te 9 ve 7, FCFS'te 17 ve 15. Ortalama bekleme: SJF 2,33 · RR 5,33 · FCFS 9,00 ms.",
           "In which policy do P2 and P3 finish earliest?",
           "SJF: P3 at time 2, P2 at time 5. With RR q=4 at 9 and 7, with FCFS at 17 and 15. Average waiting: SJF 2.33 · RR 5.33 · FCFS 9.00 ms.")],
-    16: [("P2'nin bloğu neden 4–8 değil de 4–7?",
+    18: [("P2'nin bloğu neden 4–8 değil de 4–7?",
           "P2'nin yalnızca 3 ms işi vardı. Quantum bir üst sınır; iş bitince CPU hemen bırakılır.",
           "Why is P2's block 4–7 and not 4–8?",
           "P2 only needed 3 ms. The quantum is an upper limit; the CPU is released as soon as the job ends."),
@@ -722,7 +735,7 @@ QA = {
           "Round Robin FCFS'e döner: q=12'de çizelge FCFS ile birebir aynı (ortalama bekleme 9,00 ms).",
           "And if the quantum becomes very large?",
           "Round Robin turns into FCFS: at q=12 the schedule is identical to FCFS (average waiting 9.00 ms).")],
-    17: [("Priority ile SJF neden aynı sırayı verdi?",
+    19: [("Priority ile SJF neden aynı sırayı verdi?",
           "Tesadüf. Öncelik önemi, SJF ise süreyi ölçer; bu örnekte ikisi aynı sırayı üretti.",
           "Why did Priority and SJF give the same order?",
           "Coincidence. Priority measures importance, SJF measures length; in this example they happened to agree."),
@@ -734,7 +747,7 @@ QA = {
           "Alt kuyruktaki uzun işlerin hiç CPU alamamasını (starvation) ve davranışı değişen işlerin altta takılı kalmasını.",
           "Which problem does the boost in MLFQ reduce?",
           "Long jobs in the lower queues never getting the CPU (starvation), and jobs whose behavior changed staying stuck at the bottom.")],
-    18: [("Alıştırma: FCFS mi SJF mi daha düşük ortalama bekleme verir?",
+    20: [("Alıştırma: FCFS mi SJF mi daha düşük ortalama bekleme verir?",
           "SJF: (0 + 2 + 6) / 3 = 2,67 ms. FCFS: (0 + 6 + 8) / 3 = 4,67 ms.",
           "Practice: which gives the lower average waiting time, FCFS or SJF?",
           "SJF: (0 + 2 + 6) / 3 = 2.67 ms. FCFS: (0 + 6 + 8) / 3 = 4.67 ms."),
@@ -742,7 +755,7 @@ QA = {
           "Geliş 0, ilk çalışma 8, bitiş 12: response 8, waiting 8, turnaround 12 ms.",
           "In the FCFS example, what are P2's response, waiting and turnaround times?",
           "Arrival 0, first run 8, completion 12: response 8, waiting 8, turnaround 12 ms.")],
-    19: [("İlk resimde yanlış olan ne?",
+    21: [("İlk resimde yanlış olan ne?",
           "Yük dengesiz: Core 1'de dört iş var, Core 2 boş.",
           "What is wrong in the first picture?",
           "The load is unbalanced: Core 1 has four jobs, Core 2 is idle."),
@@ -754,7 +767,7 @@ QA = {
           "Hayır. Yalnızca paralel çalışabilen kısım hızlanır; kilitle korunan kısım sırayla çalışır.",
           "Do two cores make every program twice as fast?",
           "No. Only the part that can run in parallel speeds up; the part protected by a lock still runs one at a time.")],
-    20: [("Bugünkü sonuçlardan hangisi beklemeden, hangisi scheduling'den, hangisi paylaşılan bellekten kaynaklandı?",
+    22: [("Bugünkü sonuçlardan hangisi beklemeden, hangisi scheduling'den, hangisi paylaşılan bellekten kaynaklandı?",
           "Bekleme: Demo 1, I/O sırasında CPU'nun boş kalması (7'ye karşı 11). Scheduling: Demo 3 ve 4, aynı işlerde farklı bekleme süreleri. Paylaşılan bellek: Demo 2, kaybolan güncelleme (7 yerine 6).",
           "Which of today's results came from waiting, which from scheduling, which from shared memory?",
           "Waiting: Demo 1, the CPU idling during I/O (7 vs 11). Scheduling: Demos 3 and 4, different waiting times for the same jobs. Shared memory: Demo 2, the lost update (6 instead of 7).")],
@@ -857,7 +870,8 @@ SLIDES = [
         "layers": ["run"],
         "demo": "process",
         "board": ["V01_2", "V01_3"],
-        "say": ["Run A: zaman 2–5 arası P0 BLOCKED, ama CPU sütununda 1 var. CPU boş değil, P1'i çalıştırıyor.",
+        "say": ["Önce parametreleri anlatın: instructions = programın uzunluğu, CPU probability = hesap mı bekleme mi (100 CPU-bound, 0 I/O-bound), switch behavior = OS ne zaman başka sürece geçer.",
+                "Run A: zaman 2–5 arası P0 BLOCKED, ama CPU sütununda 1 var. CPU boş değil, P1'i çalıştırıyor.",
                 "Run B: yalnız switch behavior'u değiştirin. Toplam süre 7'den 11'e çıkar."],
     },
     {
@@ -877,7 +891,7 @@ SLIDES = [
                 "İkinci soru bugünün konusu: FCFS, SJF, Round Robin, Priority, MLFQ."],
     },
     {
-        "kicker": "Slide 8 · Concurrency vs parallelism",
+        "kicker": "Slide 10 · Concurrency vs parallelism",
         "title": "Overlapping progress is not the same as simultaneous execution",
         "body": """
         <b>One core:</b> A and B alternate — both make progress, never at the same instant (concurrency).
@@ -889,7 +903,7 @@ SLIDES = [
         "say": ["Vaka 1–2 üst çizelge, vaka 3–4 alt çizelge. Process mi thread mi olduğu çizelgeyi değiştirmez."],
     },
     {
-        "kicker": "Slide 9 · Demo 2 · Layers 1–2",
+        "kicker": "Slide 11 · Demo 2 · Layers 1–2",
         "title": "Two threads, one counter — and the timer interrupt",
         "body": """
         <b>counter++</b> is one line of C but three machine steps: <b>LOAD → ADD → STORE</b>.
@@ -900,7 +914,7 @@ SLIDES = [
         "say": ["Kod tek başına doğru. Sorun, iki thread'in adımları araya girince çıkıyor. Bu tek çekirdekte bile olur."],
     },
     {
-        "kicker": "Slide 10 · LIVE DEMO 2 · Layers 3–4",
+        "kicker": "Slide 12 · LIVE DEMO 2 · Layers 3–4",
         "title": "Two threads + one shared variable = possible data race",
         "body": """
         <b>Predict:</b> counter = 5, both threads increment once. Is the result 6 or 7?
@@ -914,7 +928,7 @@ SLIDES = [
                 "Kod hiç değişmedi, sadece kesme zamanı değişti. Doğruluğu zamanlamaya bırakan program bozuktur."],
     },
     {
-        "kicker": "Slide 11 · Demo 2 · The fix",
+        "kicker": "Slide 13 · Demo 2 · The fix",
         "terms": ["Mutex"],
         "title": "The fix lives in the application: a mutex",
         "body": """
@@ -927,7 +941,7 @@ SLIDES = [
         "say": ["Linux'ta kilit bekleyen thread futex ile uyutulur. Scheduling ≠ synchronization."],
     },
     {
-        "kicker": "Slide 12 · Preemption · all four layers",
+        "kicker": "Slide 14 · Preemption · all four layers",
         "terms": ["FCFS", "RR", "SRTF", "Preemption", "Quantum"],
         "title": "Same two jobs, three OS policies",
         "body": """
@@ -945,7 +959,7 @@ SLIDES = [
                 "RR q=2: zaman 2'de P2 henüz yok, P1 devam eder; zaman 4'te sıra P2'ye geçer."],
     },
     {
-        "kicker": "Slide 13 · FCFS vs SJF",
+        "kicker": "Slide 15 · FCFS vs SJF",
         "terms": ["FCFS", "SJF", "Convoy effect"],
         "title": "Same 14 ms of work, different order",
         "body": """
@@ -958,7 +972,7 @@ SLIDES = [
         "say": ["Toplam iş yine 14 ms. Değişen sadece sıra. Gerçek OS iş süresini bilmez, geçmişten tahmin eder."],
     },
     {
-        "kicker": "Slide 14 · SRTF (board only)",
+        "kicker": "Slide 16 · SRTF (board only)",
         "terms": ["SRTF", "Starvation"],
         "title": "Shortest Remaining Time First: decide again at every arrival",
         "body": """
@@ -970,7 +984,7 @@ SLIDES = [
         "say": ["SRTF sitede yok; tahtaya çizin. Sürekli kısa iş gelirse uzun iş aç kalabilir."],
     },
     {
-        "kicker": "Slide 15 · LIVE DEMO 3 · all four layers",
+        "kicker": "Slide 17 · LIVE DEMO 3 · all four layers",
         "terms": ["FCFS", "SJF", "RR"],
         "title": "One workload, three scheduling policies",
         "body": """
@@ -985,7 +999,7 @@ SLIDES = [
         "say": ["Cevap SJF: P3 zaman 2'de, P2 zaman 5'te biter. Ama SJF iş sürelerini önceden bilmeyi varsayar."],
     },
     {
-        "kicker": "Slide 16 · LIVE DEMO 4 · Round Robin",
+        "kicker": "Slide 18 · LIVE DEMO 4 · Round Robin",
         "terms": ["RR", "Quantum", "Context switch"],
         "title": "A time quantum is a LIMIT, not a fixed duration",
         "body": """
@@ -1002,7 +1016,7 @@ SLIDES = [
                 "Küçük quantum: herkes çabuk sıra alır ama switch maliyeti artar. Büyük quantum: RR, FCFS'e döner."],
     },
     {
-        "kicker": "Slide 17 · Priority and MLFQ (board only)",
+        "kicker": "Slide 19 · Priority and MLFQ (board only)",
         "terms": ["Priority", "Starvation", "Aging", "MLFQ"],
         "title": "Importance, starvation and adaptive queues",
         "body": """
@@ -1014,7 +1028,7 @@ SLIDES = [
         "say": ["SJF ile aynı sıra çıkması tesadüf. MLFQ'yu ayrıntı değil strateji olarak anlatın."],
     },
     {
-        "kicker": "Slide 18 · Metrics and practice",
+        "kicker": "Slide 20 · Metrics and practice",
         "title": "One task, three clocks",
         "body": """
         <b>Response</b> = first run − arrival · <b>Waiting</b> = time in the ready queue ·
@@ -1027,7 +1041,7 @@ SLIDES = [
         "say": ["Öğrencilere 5 dakika verin, kağıda çizsinler; sonra sitede kontrol edin."],
     },
     {
-        "kicker": "Slide 19 · Multicore (board only)",
+        "kicker": "Slide 21 · Multicore (board only)",
         "title": "Balance the load, but respect cache locality",
         "body": """
         Load balancing moves work to an idle core; <b>affinity</b> keeps a thread where its cache is warm.
@@ -1037,7 +1051,7 @@ SLIDES = [
         "say": ["Taşımak bedava değil: T3'ün verisi Core 1'in cache'indeydi."],
     },
     {
-        "kicker": "Slide 20 · Final mental model",
+        "kicker": "Slide 22 · Final mental model",
         "title": "Connect the whole story",
         "body": """
         <b>Programs</b> become processes. A <b>process</b> contains threads.
@@ -1050,10 +1064,280 @@ SLIDES = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Demo 1 parameters: what they mean and how we use them in real life
+# ---------------------------------------------------------------------------
+PARAM_HELP = {
+    "len": "How many steps (instructions) the process runs: the length of the program. A CPU instruction takes 1 time unit; an I/O instruction starts an I/O that takes 5 units (OSTEP default).",
+    "cpu": "Chance that each instruction is a CPU instruction. 100 = only computing (CPU-bound). 0 = only I/O (I/O-bound). 50 = a mix.",
+    "switch": "When the OS switches to another process. SWITCH_ON_IO: as soon as the running process starts I/O (all modern OSes). SWITCH_ON_END: only when it finishes (old single-tasking systems).",
+}
+
+PARAM_TABLE = """
+| Parameter | What it means | Real-life example |
+| --- | --- | --- |
+| **P0 / P1** | Two separate processes (two programs) | Two applications open at the same time |
+| **Instructions** | Length of the program: how many steps it runs. CPU step = 1 unit, I/O step starts a 5-unit I/O | A short calculation vs. a long video encode |
+| **CPU probability 100** | Every step computes: **CPU-bound** | Video encoding, compiling, training an AI model, compression |
+| **CPU probability 0** | Every step waits for a device: **I/O-bound** | Copying a file, a database waiting for disk, a web server waiting for the network |
+| **CPU probability 50** | A mix of computing and waiting | Web browser, a database query (read, compute, read) |
+| **SWITCH_ON_IO** | Switch as soon as the process starts I/O: CPU and I/O overlap | Every modern OS (multiprogramming) |
+| **SWITCH_ON_END** | Switch only when the process finishes: the CPU idles during I/O | Old single-tasking systems (e.g. MS-DOS ran one program at a time) |
+
+**In real life we do not set a probability — we measure it:**
+
+- `time ./program` → if **user + sys ≈ real**, the program is CPU-bound; if **real ≫ user + sys**, it spends most of its time waiting (I/O-bound).
+- `top` / `htop` show %CPU per process; `vmstat` shows the CPU's *iowait*.
+- **Engineering decision:** for CPU-bound work use about as many threads as cores; for I/O-bound work more threads help (most of them are waiting); give unimportant background work a low priority with `nice`.
+"""
+
+
+def render_param_explainer(expanded=False):
+    with st.expander("ℹ️ What do these parameters mean? Real-life examples", expanded=expanded):
+        st.markdown(PARAM_TABLE)
+
+
+# ---------------------------------------------------------------------------
+# Thread-level scheduling demo: one process, two worker threads
+# ---------------------------------------------------------------------------
+def thread_simulate(cores=1, sleep=3, work=6, quantum=4):
+    """main creates T1 (reader: print, sleep, print) and T2 (calculator: print, loop, print),
+    then joins both. 1 tick = 1 time unit, global ready queue, Round Robin on each core."""
+    progs = {
+        "main": [("cpu", 1, "main: create T1 and T2"), ("join", 0, ""), ("cpu", 1, "main: both joined, exit")],
+        "T1": [("cpu", 1, "T1: Waiting for I/O..."), ("block", sleep, ""), ("cpu", 1, "T1: Finished waiting!")],
+        "T2": [("cpu", 1, "T2: Starting calculation..."), ("cpu", work, ""), ("cpu", 1, "T2: Calculation finished!")],
+    }
+    st_ = {n: {"pc": 0, "left": progs[n][0][1], "state": "—", "wake": None} for n in progs}
+    st_["main"]["state"] = "READY"
+    queue, running, used = ["main"], [None] * cores, [0] * cores
+    lanes = {n: [] for n in progs}
+    core_lanes = [[] for _ in range(cores)]
+    output, t, t1_ready_wait = [], 0, 0
+
+    def free_core(n):
+        for c in range(cores):
+            if running[c] == n:
+                running[c] = None
+
+    def advance(n):
+        s = st_[n]
+        s["pc"] += 1
+        if s["pc"] >= len(progs[n]):
+            s["state"] = "DONE"; free_core(n); return
+        op, arg, _ = progs[n][s["pc"]]
+        if op == "cpu":
+            s["left"] = arg
+        elif op == "block":
+            s["state"] = "BLOCKED"; s["wake"] = t + 1 + arg; free_core(n)
+        elif op == "join":
+            if st_["T1"]["state"] == "DONE" and st_["T2"]["state"] == "DONE":
+                advance(n)
+            else:
+                s["state"] = "BLOCKED (join)"; free_core(n)
+
+    while any(s["state"] != "DONE" for s in st_.values()) and t < 200:
+        if st_["T1"]["state"] == "BLOCKED" and st_["T1"]["wake"] == t:
+            st_["T1"]["state"] = "READY"; queue.append("T1")
+            st_["T1"]["pc"] += 1; st_["T1"]["left"] = progs["T1"][st_["T1"]["pc"]][1]
+        for c in range(cores):
+            r = running[c]
+            if r is not None and used[c] >= quantum and queue:
+                st_[r]["state"] = "READY"; queue.append(r); running[c] = None
+        for c in range(cores):
+            if running[c] is None and queue:
+                r = queue.pop(0); running[c] = r; used[c] = 0; st_[r]["state"] = "RUNNING"
+        if st_["T1"]["state"] == "READY" and st_["T1"]["pc"] == 2:
+            t1_ready_wait += 1
+        for n in progs:
+            lanes[n].append(st_[n]["state"])
+        for c in range(cores):
+            core_lanes[c].append(running[c] or "idle")
+        for c in range(cores):
+            r = running[c]
+            if r is None:
+                continue
+            s = st_[r]
+            s["left"] -= 1; used[c] += 1
+            if s["left"] == 0:
+                label = progs[r][s["pc"]][2]
+                if label:
+                    output.append((t + 1, label))
+                if r == "main" and s["pc"] == 0:
+                    for n in ("T1", "T2"):
+                        st_[n]["state"] = "READY"; queue.append(n)
+                advance(r)
+        if st_["main"]["state"] == "BLOCKED (join)" and st_["T1"]["state"] == "DONE" and st_["T2"]["state"] == "DONE":
+            st_["main"]["state"] = "READY"; queue.append("main"); st_["main"]["pc"] = 2; st_["main"]["left"] = 1
+        t += 1
+    return lanes, core_lanes, output, t, t1_ready_wait
+
+
+STATE_COLORS = {"RUNNING": "#BBF7D0", "READY": "#FEF08A", "BLOCKED": "#BFDBFE", "BLOCKED (join)": "#E9D5FF",
+                "DONE": "#F1F5F9", "—": "#FFFFFF"}
+
+
+def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        nc = st.radio("CPU cores", [1, 2], index=[1, 2].index(cores), horizontal=True, key=f"{key}_cores",
+                      help="1 core = like running with `taskset -c 0`: concurrency without parallelism.")
+    with c2:
+        sl = st.slider("T1 sleep / I/O wait (ticks)", 1, 10, sleep, key=f"{key}_sleep",
+                       help="sleep(3) in the code: T1 is BLOCKED and uses no CPU.")
+    with c3:
+        wk = st.slider("T2 calculation (ticks)", 1, 10, work, key=f"{key}_work",
+                       help="The for-loop in calculator(): pure CPU work.")
+    lanes, core_lanes, output, total, t1_ready = thread_simulate(nc, sl, wk, 4)
+    st.markdown("**Thread states over time** (one process P0; Round Robin, quantum 4)")
+    render_lanes([(n, l) for n, l in lanes.items()], STATE_COLORS)
+    st.markdown("**Which thread is on each core?**")
+    render_lanes([(f"Core {c}", l) for c, l in enumerate(core_lanes)],
+                 {"main": "#E5E7EB", "T1": "#BFDBFE", "T2": "#BBF7D0"})
+    st.caption("States: RUNNING (green) · READY (yellow) · BLOCKED (blue) · BLOCKED in pthread_join (purple) · DONE (grey).")
+    st.markdown("**Program output, in order**")
+    st.code("\n".join(f"t={t:>2}  {line}" for t, line in output), language="text")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total time", f"{total} ticks")
+    m2.metric("T1 READY after waking", f"{t1_ready} tick(s)")
+    blocked_cpu = sum(1 for i, s in enumerate(lanes["T1"]) if s == "BLOCKED" and any(cl[i] == "T2" for cl in core_lanes))
+    m3.metric("Ticks T2 ran while T1 was blocked", blocked_cpu)
+    st.success("T1's wait did not stop T2: while T1 was BLOCKED the scheduler ran T2.")
+
+
+APP_THREAD_SCHED = """#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+
+void *reader(void *arg) {                 // T1
+    printf("T1: Waiting for I/O...\\n");
+    sleep(3);                             // blocking wait, no CPU
+    printf("T1: Finished waiting!\\n");
+    return NULL;
+}
+
+void *calculator(void *arg) {             // T2
+    printf("T2: Starting calculation...\\n");
+    volatile unsigned long result = 0;
+    for (unsigned long i = 0; i < 100000000UL; i++)
+        result += i;                      // CPU work
+    printf("T2: Calculation finished!\\n");
+    return NULL;
+}
+
+int main(void) {                          // main thread
+    pthread_t t1, t2;
+    pthread_create(&t1, NULL, reader, NULL);
+    pthread_create(&t2, NULL, calculator, NULL);
+    pthread_join(t1, NULL);
+    pthread_join(t2, NULL);
+    return 0;
+}"""
+OS_THREAD_SCHED = """// Simplified OS scheduling logic
+// Teaching pseudocode, not actual Linux code
+
+if (thread_T1.blocks()) {
+    thread_T1.state = BLOCKED;
+    remove_from_runnable_set(thread_T1);
+    Thread *next = choose_ready_thread();   // T2
+    context_switch(next);
+}
+
+// When T1's wait finishes:
+thread_T1.state = READY;                    // not RUNNING yet
+add_to_runnable_set(thread_T1);"""
+RUN_THREAD_CMDS = """gcc -O0 -pthread thread_demo.c -o thread_demo
+./thread_demo                 # all cores: T1 and T2 may run in parallel
+taskset -c 0 ./thread_demo    # one logical CPU: concurrency, no parallelism
+time ./thread_demo            # real vs user+sys: T1's sleep costs no CPU"""
+
+THREAD_SLIDES = [
+    {
+        "kicker": "Slide 8 · Thread-level scheduling · Layers 1–2",
+        "title": "One process, two threads: who does the OS schedule?",
+        "body": """
+        Previous week: a process can contain several threads. This week: the OS <b>schedules those threads</b>.
+        <br>In process <b>P0</b>, <b>T1 (file reader)</b> is <b>BLOCKED</b> waiting for the disk, while
+        <b>T2 (calculator)</b> is <b>RUNNING</b> on CPU core 0.
+        <br><br><b>One process ≠ one execution flow · One blocked thread ≠ entire process blocked</b>
+        """,
+        "flow": "OS schedules runnable threads: CPU core 0 → T2 while T1 is BLOCKED",
+        "layers": ["app", "os"],
+        "terms": ["Thread", "Blocking call", "pthread_join"],
+        "code": (("app", "Application code · C (POSIX threads)", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED)),
+        "board": ["V18_1"],
+        "say": ["Geçen hafta bir process'in birden çok thread içerebileceğini gördük. Bu hafta OS'nin bu thread'leri nasıl zamanladığını görüyoruz.",
+                "T1 bloke, ama bu bütün uygulamanın durması demek değil: T2 çalışmaya devam edebilir.",
+                "sleep(3) gerçek dosya okuma değil; thread'in CPU kullanmadan beklemesini temsil ediyor. Gerçek I/O için read() kullanılabilir.",
+                "pthread_create() kullanıcı alanındaki kütüphane arayüzü; Linux'ta thread'i kernel mekanizmaları oluşturur."],
+        "say_en": ["Last week we learned that a process can contain multiple threads. This week we learn how the OS schedules those threads.",
+                   "T1 is blocked, but that does not mean the entire application must stop: T2 can still run.",
+                   "sleep(3) is not a real file read; it stands for a thread waiting without using the CPU. For real blocking I/O we could use read().",
+                   "pthread_create() is a user-space library interface; on Linux the thread is created by kernel mechanisms."],
+        "qa": [("Bu programda kaç process ve kaç thread var?",
+                "Bir process (P0) ve üç thread: main, T1 ve T2. İki worker thread'in (T1, T2) davranışını inceliyoruz; main ise pthread_join'de bekliyor.",
+                "How many processes and threads does this program have?",
+                "One process (P0) and three threads: main, T1 and T2. We study the two worker threads (T1, T2); main waits in pthread_join."),
+               ("T1 uyurken CPU kullanır mı?",
+                "Hayır. sleep(3) sırasında T1 BLOCKED durumundadır ve runnable kümesinde değildir.",
+                "Does T1 consume CPU while sleeping?",
+                "No. During sleep(3) T1 is BLOCKED and not in the runnable set.")],
+    },
+    {
+        "kicker": "Slide 9 · Thread-level scheduling · LIVE · Layers 3–4",
+        "title": "What happens to T1 and T2?",
+        "body": """
+        <b>Predict:</b> can T2 run while T1 is blocked? Which thread finishes first? Is the order guaranteed?
+        <br>Start with <b>1 core</b> (like <code>taskset -c 0</code>), then 2 cores. Change the sleep and calculation lengths.
+        <br><i>Illustrative timeline in ticks, not measured time: real order and CPU sharing can vary.</i>
+        """,
+        "layers": ["run", "res"],
+        "code": (("app", "Run it yourself · Linux / WSL", RUN_THREAD_CMDS), None),
+        "demo": "thread_sched",
+        "board": ["V18_1"],
+        "say": ["Üç sonucu öğrencilere buldurun: T1'in beklemesi T2'yi engellemez; T1 uyanınca önce READY olur; CPU'ya hangi thread'in alınacağına scheduler karar verir.",
+                "Tek çekirdekte T1 uyandığında T2 çalışıyorsa T1 1 tık READY bekliyor. İki çekirdekte hiç beklemiyor.",
+                "Hesap süresini 1'e indirin ya da uykuyu 8'e çıkarın: 'Finished' satırlarının sırası değişiyor. Sıra garanti değil.",
+                "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin."],
+        "say_en": ["Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
+                   "On one core, if T2 is running when T1 wakes, T1 waits 1 tick in READY. On two cores it does not wait at all.",
+                   "Set the calculation to 1 or the sleep to 8: the order of the 'Finished' lines changes. The order is not guaranteed.",
+                   "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU."],
+        "qa": [("T1 bloke iken T2 çalışabilir mi?",
+                "Evet. Varsayılan ayarlarda T2, T1'in uyuduğu 3 tıkın hepsinde çalışıyor.",
+                "Can T2 run while T1 is blocked?",
+                "Yes. With the default settings T2 runs during all 3 ticks of T1's sleep."),
+               ("Hangi thread önce biter? Sıra garanti mi?",
+                "Varsayılanda (uyku 3, hesap 6) T1 önce biter. Hesap 1 veya uyku 8 olunca T2 önce biter. Sıra garanti değil; scheduler ve iş süreleri belirler.",
+                "Which thread finishes first? Is the order guaranteed?",
+                "With the defaults (sleep 3, calculation 6) T1 finishes first. With calculation 1 or sleep 8, T2 finishes first. The order is not guaranteed; the scheduler and the work lengths decide."),
+               ("Main thread neden iki thread'i de bekliyor?",
+                "pthread_join() olmasaydı main return edip process'i bitirebilir, T1 ve T2'nin işi yarıda kalırdı.",
+                "Why does the main thread wait for both threads?",
+                "Without pthread_join() main could return and end the process, cutting T1 and T2 off mid-work."),
+               ("OS, bir thread bloke iken aynı process'ten başka bir thread çalıştırabilir mi?",
+                "Evet.",
+                "Can the OS run another thread of the same process while one thread is blocked?",
+                "Yes."),
+               ("Uygulama T2'nin CPU'yu tam olarak ne zaman alacağına karar verir mi?",
+                "Hayır. Uygulama thread oluşturur ve scheduling ile ilgili istekte bulunabilir; CPU zamanlamasını OS kendi politikalarıyla yönetir.",
+                "Does the application decide exactly when T2 gets the CPU?",
+                "No. The application creates threads and can request scheduling-related behavior, but the OS controls CPU scheduling under its policies."),
+               ("Daha fazla thread her zaman performansı artırır mı?",
+                "Hayır. Çekirdek sayısı, iş yükü türü, context switch maliyeti ve senkronizasyon maliyeti belirler.",
+                "Does creating more threads always improve performance?",
+                "No. Core count, workload type, context-switch overhead and synchronization costs decide.")],
+    },
+]
+
+SLIDES[7:7] = THREAD_SLIDES
+
+
 LECTURE_DEMOS = {
     "process": lambda key, **kw: render_process_demo(key, **kw),
     "thread": lambda key, **kw: render_thread_demo(key, backend_open=True),
     "schedule": lambda key, **kw: render_scheduling_demo(key, **kw),
+    "thread_sched": lambda key, **kw: render_thread_sched_demo(key, **kw),
 }
 
 
@@ -1966,7 +2250,15 @@ def main():
         st.markdown("**Ask students:** When one process is waiting for I/O, what can the CPU do?")
 
     with tabs[3]:
-        st.header("Scenario 2 — Two threads, one shared variable")
+        st.header("Scenario 2a — Thread-level scheduling")
+        st.markdown("**Goal:** show that one blocked thread does not block the other threads of the same process.")
+        render_terms(["Thread", "Blocking call", "pthread_join"])
+        with st.expander("Application code (C, POSIX threads) and OS pseudocode"):
+            code_pair(("app", "Application code", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED))
+            st.code(RUN_THREAD_CMDS, language="bash")
+        render_thread_sched_demo("tab_tsched")
+        st.divider()
+        st.header("Scenario 2b — Two threads, one shared variable")
         st.markdown("**Goal:** show how interleaving creates a lost update.")
         render_thread_demo("tab_thread", backend_open=True)
 
