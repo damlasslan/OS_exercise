@@ -1251,6 +1251,17 @@ RUN_THREAD_CMDS = """gcc -O0 -pthread thread_demo.c -o thread_demo
 taskset -c 0 ./thread_demo    # one logical CPU: concurrency, no parallelism
 time ./thread_demo            # real vs user+sys: T1's sleep costs no CPU"""
 
+MEASURE_CMDS = """# GNU time (Debian/Ubuntu: sudo apt install time)
+/usr/bin/time -v ./thread_demo
+
+# Fields to read:
+#   Elapsed (wall clock) time      about 3 s  <- T1's sleep(3)
+#   User time (seconds)            T2's loop: the real CPU work
+#   Voluntary context switches     a thread blocked and gave up the CPU
+#   Involuntary context switches   the scheduler preempted a thread
+
+# Compare: remove sleep(3) (CPU-bound) or time a large file copy (I/O-bound)"""
+
 THREAD_SLIDES = [
     {
         "kicker": "Slide 8 · Thread-level scheduling · Layers 1–2",
@@ -1292,14 +1303,16 @@ THREAD_SLIDES = [
         <br><i>Illustrative timeline in ticks, not measured time: real order and CPU sharing can vary.</i>
         """,
         "layers": ["run", "res"],
-        "code": (("app", "Run it yourself · Linux / WSL", RUN_THREAD_CMDS), None),
+        "code": (("app", "Run it yourself · Linux / WSL", RUN_THREAD_CMDS), ("os", "Measure it yourself · preview of Week 11", MEASURE_CMDS)),
         "demo": "thread_sched",
         "board": ["V18_1"],
-        "say": ["Üç sonucu öğrencilere buldurun: T1'in beklemesi T2'yi engellemez; T1 uyanınca önce READY olur; CPU'ya hangi thread'in alınacağına scheduler karar verir.",
+        "say": ["Süre kalırsa ölçün (Week 11 önizlemesi): /usr/bin/time -v ile real yaklaşık 3 s, user çok daha küçük; voluntary context switch'ler bloke olmayı, involuntary olanlar preemption'ı sayar. Sayılar makineye göre değişir, öğrenciler kendi sonuçlarını kaydetsin.",
+                "Üç sonucu öğrencilere buldurun: T1'in beklemesi T2'yi engellemez; T1 uyanınca önce READY olur; CPU'ya hangi thread'in alınacağına scheduler karar verir.",
                 "Tek çekirdekte T1 uyandığında T2 çalışıyorsa T1 1 tık READY bekliyor. İki çekirdekte hiç beklemiyor.",
                 "Hesap süresini 1'e indirin ya da uykuyu 8'e çıkarın: 'Finished' satırlarının sırası değişiyor. Sıra garanti değil.",
                 "taskset -c 0, CPU 0'a izin varsa programı tek mantıksal CPU'da çalıştırır; izin yoksa kullanılabilir başka bir CPU seçin."],
-        "say_en": ["Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
+        "say_en": ["If time allows, measure it (preview of Week 11): with /usr/bin/time -v, real is about 3 s and user much smaller; voluntary context switches count blocking, involuntary ones count preemption. Numbers vary by machine; let students record their own.",
+                   "Let students find three results: T1's wait does not block T2; when T1 wakes it becomes READY first; the scheduler decides which thread gets the CPU.",
                    "On one core, if T2 is running when T1 wakes, T1 waits 1 tick in READY. On two cores it does not wait at all.",
                    "Set the calculation to 1 or the sleep to 8: the order of the 'Finished' lines changes. The order is not guaranteed.",
                    "taskset -c 0 runs the program on one logical CPU if CPU 0 is allowed; otherwise pick another available CPU."],
@@ -1323,6 +1336,14 @@ THREAD_SLIDES = [
                 "Hayır. Uygulama thread oluşturur ve scheduling ile ilgili istekte bulunabilir; CPU zamanlamasını OS kendi politikalarıyla yönetir.",
                 "Does the application decide exactly when T2 gets the CPU?",
                 "No. The application creates threads and can request scheduling-related behavior, but the OS controls CPU scheduling under its policies."),
+               ("time çıktısında real yaklaşık 3 s, user ise çok daha küçük. Bu ne demek?",
+                "Programın zamanının çoğu T1'in uykusunu beklemekle geçiyor; CPU'yu az kullanıyor. real ≫ user + sys, beklemenin baskın olduğunu gösterir.",
+                "In the time output real is about 3 s but user is much smaller. What does that mean?",
+                "Most of the program's time is spent waiting for T1's sleep; it uses little CPU. real ≫ user + sys shows that waiting dominates."),
+               ("Voluntary ve involuntary context switch arasındaki fark nedir?",
+                "Voluntary: thread bloke olup CPU'yu kendisi bıraktı (sleep, I/O, join). Involuntary: scheduler thread'i kesti (preemption, quantum doldu).",
+                "What is the difference between voluntary and involuntary context switches?",
+                "Voluntary: the thread blocked and gave up the CPU itself (sleep, I/O, join). Involuntary: the scheduler preempted it (preemption, quantum expired)."),
                ("Daha fazla thread her zaman performansı artırır mı?",
                 "Hayır. Çekirdek sayısı, iş yükü türü, context switch maliyeti ve senkronizasyon maliyeti belirler.",
                 "Does creating more threads always improve performance?",
@@ -2256,6 +2277,8 @@ def main():
         with st.expander("Application code (C, POSIX threads) and OS pseudocode"):
             code_pair(("app", "Application code", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED))
             st.code(RUN_THREAD_CMDS, language="bash")
+            st.markdown("**Measure it yourself** (preview of Week 11)")
+            st.code(MEASURE_CMDS, language="bash")
         render_thread_sched_demo("tab_tsched")
         st.divider()
         st.header("Scenario 2b — Two threads, one shared variable")
