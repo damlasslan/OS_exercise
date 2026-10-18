@@ -3383,6 +3383,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
     # ======================= Video rendering =======================
     {
         "kicker": f"Video rendering · {S2}",
+        "board": ["V20_1"],
         "title": "Video rendering: static split vs a shared work queue",
         "body": """
         Thousands of largely independent, CPU-intensive frames; some frames are much heavier than others.
@@ -3402,6 +3403,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
     },
     {
         "kicker": f"Video rendering · {S3}",
+        "board": ["V20_1"],
         "title": "Video rendering: how many workers?",
         "body": """
         4 cores, 16 frames × 3 ms. <b>Predict:</b> does 32 workers finish faster than 4?
@@ -3424,6 +3426,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
     },
     {
         "kicker": "Video rendering · Design decision",
+        "board": ["V20_1"],
         "title": "Video rendering: throughput, not first response",
         "body": _design_table([
             ("What must run?", "Thousands of independent CPU-bound frame jobs; output collection"),
@@ -3447,7 +3450,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
                    "Consider affinity and NUMA placement only if measurement shows a memory bottleneck."],
     },
     {
-        "kicker": "Engineering decisions · 1/5 · PPT slide 87",
+        "kicker": "Engineering decisions · 1/5 · PPT slide 88",
         "title": "Real-world scheduling decisions",
         "body": """
         First ask: <b>what are we trying to optimize?</b> Then: which scheduling approach supports it?
@@ -3485,7 +3488,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
                 "No. Linux and Windows do not offer these four rows as ready-made modes. On Linux, for example, normal threads run under the general-purpose scheduler and critical threads may use real-time policies such as SCHED_FIFO; but the real decision combines application architecture, priorities, worker count and resource limits, and is verified by measurement.")],
     },
     {
-        "kicker": "Engineering decisions · 2/5 · PPT slide 88",
+        "kicker": "Engineering decisions · 2/5 · PPT slide 89",
         "title": "How do engineers select a scheduling strategy?",
         "body": """
         <div style='display:flex;gap:10px;flex-wrap:wrap;margin:8px 0'>
@@ -3514,7 +3517,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
                    "So we first state the system's requirements, turn them into measurable criteria, evaluate a suitable scheduling approach, then measure and evaluate again."],
     },
     {
-        "kicker": "Engineering decisions · 3/5 · PPT slide 89 · class exercise",
+        "kicker": "Engineering decisions · 3/5 · PPT slide 90 · class exercise",
         "title": "Class exercise — choose the metric",
         "body": """
         For each case, pick the metric the system must optimize. Students answer first; then click an option to check.
@@ -3536,7 +3539,7 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
         "say_en": ["Let students discuss for 2–3 minutes first. Answers: last seat → atomic DB transaction / constraint; frozen stream → async I/O and buffering; 10,000 threads on 8 cores → bounded worker pool; controller waiting on a low-priority lock → priority inheritance / ceiling; report slowing balance requests → background isolation + responsive scheduling, measured with p99."],
     },
     {
-        "kicker": "Engineering decisions · 5/5 · PPT slide 90",
+        "kicker": "Engineering decisions · 5/5 · PPT slide 91",
         "title": "Who actually makes the scheduling decision?",
         "body": """
         Application developers do not set the Linux or Windows kernel quantum directly.
@@ -3551,9 +3554,9 @@ Buffering trades start-up latency for resilience. GPU decoding is possible and n
         """,
         "flow": "Application developers design the workload. Operating systems schedule execution. Engineers optimize performance by measuring the trade-offs.",
         "say": ["Öğrenciler, uygulama geliştiricisinin Linux veya Windows kernel'inin quantum değerini doğrudan belirlediğini düşünebilir. Geliştirici iş yükünü tasarlar ve worker sayısını belirler; öncelik, CPU affinity ve politika için talepte bulunabilir; OS ve sistem yöneticisi bunları politikaya göre uygular, sınırlar ya da kontrol eder.",
-                "Bağlantı: thread demosundaki 'Who decides each parameter?' tablosu ve PPT slayt 52 'Who controls CPU scheduling?'."],
+                "Bağlantı: thread demosundaki 'Who decides each parameter?' tablosu ve PPT slayt 53 'Who controls CPU scheduling?'."],
         "say_en": ["Students may think the application developer sets the Linux or Windows kernel quantum directly. The developer designs the workload and sets the number of workers; they can request priority, CPU affinity and a policy; the OS and the administrator apply, limit or control these according to policy.",
-                   "Link: the 'Who decides each parameter?' table in the thread demo and PPT slide 52 'Who controls CPU scheduling?'."],
+                   "Link: the 'Who decides each parameter?' table in the thread demo and PPT slide 53 'Who controls CPU scheduling?'."],
         "qa": [("Uygulamam kendi quantum'unu ayarlayabilir mi?",
                 "Genellikle hayır. Uygulama öncelik (nice, pthread_setschedparam), CPU affinity (sched_setaffinity) ya da desteklenen bir politika isteyebilir; zaman dilimi ise OS scheduler'ının politikasına bağlıdır ve çoğu zaman yönetici ayarlarıyla sınırlıdır.",
                 "Can my application set its own quantum?",

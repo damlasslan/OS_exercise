@@ -130,7 +130,7 @@
  {
   "code": "V04",
   "title": "Same two jobs, three policies",
-  "slides": "58-63",
+  "slides": "59-64",
   "board": 1,
   "boards": 1,
   "img": "V04_1.jpg",
@@ -154,7 +154,7 @@
  {
   "code": "V05",
   "title": "FCFS vs SJF  (8 / 4 / 2)",
-  "slides": "74-80",
+  "slides": "75-81",
   "board": 1,
   "boards": 1,
   "img": "V05_1.jpg",
@@ -176,7 +176,7 @@
  {
   "code": "V06",
   "title": "SRTF step by step",
-  "slides": "82, 91",
+  "slides": "83, 92",
   "board": 1,
   "boards": 1,
   "img": "V06_1.jpg",
@@ -204,7 +204,7 @@
  {
   "code": "V07",
   "title": "Round Robin q = 2: the ready queue",
-  "slides": "92-93",
+  "slides": "93-94",
   "board": 1,
   "boards": 1,
   "img": "V07_1.jpg",
@@ -232,7 +232,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "68-71, 83-86",
+  "slides": "69-72, 84-87",
   "board": 1,
   "boards": 2,
   "img": "V08_1.jpg",
@@ -258,7 +258,7 @@
  {
   "code": "V08",
   "title": "Demo 3: one workload, three policies",
-  "slides": "68-71, 83-86",
+  "slides": "69-72, 84-87",
   "board": 2,
   "boards": 2,
   "img": "V08_2.jpg",
@@ -276,7 +276,7 @@
  {
   "code": "V09",
   "title": "Priority scheduling and starvation",
-  "slides": "96-98",
+  "slides": "97-99",
   "board": 1,
   "boards": 1,
   "img": "V09_1.jpg",
@@ -298,7 +298,7 @@
  {
   "code": "V10",
   "title": "MLFQ: a mini story",
-  "slides": "99-103",
+  "slides": "100-104",
   "board": 1,
   "boards": 1,
   "img": "V10_1.jpg",
@@ -324,7 +324,7 @@
  {
   "code": "V11",
   "title": "One task, three clocks",
-  "slides": "104-105",
+  "slides": "105-106",
   "board": 1,
   "boards": 1,
   "img": "V11_1.jpg",
@@ -346,7 +346,7 @@
  {
   "code": "V12",
   "title": "Practice solution  (6 / 2 / 4)",
-  "slides": "106-107",
+  "slides": "107-108",
   "board": 1,
   "boards": 1,
   "img": "V12_1.jpg",
@@ -366,7 +366,7 @@
  {
   "code": "V13",
   "title": "Multicore: balance vs locality",
-  "slides": "112-119",
+  "slides": "113-120",
   "board": 1,
   "boards": 1,
   "img": "V13_1.jpg",
@@ -522,7 +522,7 @@
  {
   "code": "V19",
   "title": "Spinlock vs mutex: two ways to wait",
-  "slides": "129-130, LM 13",
+  "slides": "130-131, LM 13",
   "board": 1,
   "boards": 1,
   "img": "V19_1.jpg",
@@ -543,6 +543,30 @@
    "Write the results on the right: on one core the mutex wins, on two cores the spinlock is slightly faster, and with no waiting both are the same.",
    "The difference is how a thread waits: a spinning thread is RUNNING for the scheduler and eats CPU; a sleeping thread uses no CPU, but sleeping and waking up has a cost.",
    "Spinlock for short critical sections on multicore, mutex for long or unknown waits. Real mutexes spin briefly first, then sleep."
+  ]
+ },
+ {
+  "code": "V20",
+  "title": "Video rendering: two dimensions",
+  "slides": "52, RW 14-16",
+  "board": 1,
+  "boards": 1,
+  "img": "V20_1.jpg",
+  "caps": [
+   "Sol yarı: 16 kare, ikisi ağır (8 ve 6 ms), gerisi 1 ms. 4 worker, her biri bir çekirdekte.",
+   "Sabit bölmede ağır kareleri alan worker 11 ms çalışıyor, diğerleri 4 ms'de bitip bekliyor: 12 ms boş çekirdek.",
+   "Paylaşılan kuyrukta boşta kalan worker sıradaki kareyi alıyor: 8 ms'de bitiyor. Kuyruk atomic sayaç ya da mutex ister.",
+   "Sağ yarı: 4 çekirdek, 16 kare × 3 ms. Worker sayısını değiştiriyoruz.",
+   "1 worker 48 ms, 4 worker 12 ms. 8 ya da 32 worker daha hızlı değil: context switch ve soğuk cache maliyeti.",
+   "Tasarım kararı: paylaşılan iş kuyruğu ve çekirdek sayısına göre sınırlı worker havuzu. Hedef throughput, ilk yanıt değil."
+  ],
+  "caps_en": [
+   "Left half: 16 frames, two of them heavy (8 and 6 ms), the rest 1 ms. 4 workers, one per core.",
+   "With a static split the worker that got the heavy frames runs 11 ms while the others finish at 4 ms and wait: 12 ms of idle cores.",
+   "With a shared queue an idle worker takes the next frame: done at 8 ms. The queue needs an atomic counter or a mutex.",
+   "Right half: 4 cores, 16 frames × 3 ms. We change the number of workers.",
+   "1 worker 48 ms, 4 workers 12 ms. 8 or 32 workers are not faster: context switches and cold caches cost time.",
+   "Design decision: a shared work queue and a worker pool bounded by the core count. The goal is throughput, not first response."
   ]
  }
 ]

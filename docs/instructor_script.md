@@ -10,12 +10,12 @@ Teaching pattern for every demo: **Predict → Run → Observe → Explain**, ac
 
 | Time | PPT | LM | Content |
 | --- | --- | --- | --- |
-| 00–45 | 1–28 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling: roles and snapshot, I/O-bound ≠ CPU-free, activities that do not execute as CPU threads, application vs OS vs hardware (optional: PPT 127–128 measure it yourself) |
-| 45–70 | 29–45 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) (optional: PPT 129–130 Week 5 tools seen by the scheduler, spinlock vs mutex) |
-| 70–100 | 46–67 | 14 + Real-World 1–16 | Five real systems (synchronization + scheduling, real mechanisms, video rendering), preemption; Round Robin is first named on LM 14 |
+| 00–45 | 1–28 | 1–9 | Big picture, process states, OSTEP, Demo 1, thread-level scheduling: roles and snapshot, I/O-bound ≠ CPU-free, activities that do not execute as CPU threads, application vs OS vs hardware (optional: PPT 128–129 measure it yourself) |
+| 45–70 | 29–45 | 10–13 | Concurrency vs parallelism, four cases, blocking, Demo 2 (lost update, mutex) (optional: PPT 130–131 Week 5 tools seen by the scheduler, spinlock vs mutex) |
+| 70–100 | 46–68 | 14 + Real-World 1–16 | Five real systems (synchronization + scheduling, real mechanisms, video rendering), preemption; Round Robin is first named on LM 14 |
 | 100–110 | — | — | Break |
-| 110–160 | 68–111 | 15–20 + Real-World 17–21 | FCFS, SJF, SRTF, Demo 3, Demo 4 (which quantum performs best?), engineering decisions (PPT 86–90), Priority, MLFQ, metrics, practice |
-| 160–180 | 112–126 | 21–22 | Multicore, bank example, wrap-up |
+| 110–160 | 69–112 | 15–20 + Real-World 17–21 | FCFS, SJF, SRTF, Demo 3, Demo 4 (which quantum performs best?), engineering decisions (PPT 87–91), Priority, MLFQ, metrics, practice |
+| 160–180 | 113–127 | 21–22 | Multicore, bank example, wrap-up |
 
 ## Key messages
 
