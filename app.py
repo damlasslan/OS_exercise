@@ -274,31 +274,35 @@ def board_manifest():
     return {f"{e['code']}_{e['board']}": e for e in data}
 
 
-def render_board(board_keys, say):
+def render_board(board_keys, say, lang="tr", links=False):
     """Instructor-only panel: what to draw on the board and what to say."""
     if not board_keys and not say:
         return
-    with st.expander("📝 Eğitmen · tahtaya çizilecekler ve anlatım", expanded=False):
+    t = UI[lang]
+    with st.expander(t["panel"], expanded=False):
         if say:
-            st.markdown("**Söyleyin**")
-            for s in say:
-                st.markdown(f"- {s}")
+            st.markdown(f"**{t['say']}**")
+            for line in say:
+                st.markdown(f"- {line}")
+        if links:
+            st.markdown(OSTEP_LINKS[lang])
         man = board_manifest()
         for key in board_keys:
             e = man.get(key)
             if not e:
                 continue
             part = f" ({e['board']}/{e['boards']})" if e["boards"] > 1 else ""
-            st.markdown(f"**Tahta {e['code']}{part} · {e['title']}** · slayt {e['slides']}")
+            st.markdown(f"**{t['board']} {e['code']}{part} · {e['title']}** · {t['slides']} {e['slides']}")
             img = ASSETS / "board" / e["img"]
             if img.exists():
                 st.image(str(img), width="stretch")
-            st.markdown("**Çizim ve anlatım sırası**")
-            st.markdown("\n".join(f"{i}. {c}" for i, c in enumerate(e["caps"], 1)))
+            st.markdown(f"**{t['steps']}**")
+            caps = e.get("caps_en", e["caps"]) if lang == "en" else e["caps"]
+            st.markdown("\n".join(f"{i}. {c}" for i, c in enumerate(caps, 1)))
         codes = sorted({k.split("_")[0] for k in board_keys})
         for code in codes:
-            vid = ASSETS / "video" / f"{code}.mp4"
-            if vid.exists() and st.toggle(f"▶ {code} tahta videosunu göster", key=f"vid_{code}_{'_'.join(board_keys)}"):
+            vid = ASSETS / "video" / ("en" if lang == "en" else "") / f"{code}.mp4"
+            if vid.exists() and st.toggle(f"▶ {code} · {t['video']}", key=f"vid_{lang}_{code}_{'_'.join(board_keys)}"):
                 st.video(str(vid))
 
 
@@ -440,13 +444,58 @@ OS_TICK = """on_timer_tick():
 
 on_exit(p):  schedule();       // finished early: switch now"""
 
+SAY_EN = {
+    1: ["OSTEP is a free operating-systems textbook; we use the simulators from its homework as our engine.",
+        "The simulator is not a real kernel; it models the behavior. We will not show the simulator's code."],
+    2: ["In every demo we walk through these four layers in order. The coloured labels on top show which layer we are in."],
+    3: ["READY: can run but waits for the CPU. WAITING: cannot run even if you give it the CPU; it waits for an event."],
+    4: ["Ask: when P0 starts I/O and waits, must the CPU stay idle?",
+        "A real read() does not always block; if the data is cached it returns immediately. The number of C lines does not map one-to-one to OSTEP instructions."],
+    5: ["SWITCH_ON_END is not the same as non-preemptive: even a non-preemptive scheduler can run a READY thread when the running one blocks.",
+        "SWITCH_ON_IO is not preemption either: the process gives up the CPU because it cannot continue during I/O."],
+    6: ["Run A: at times 2–5 P0 is BLOCKED, but the CPU column shows 1. The CPU is not idle; it runs P1.",
+        "Run B: change only the switch behavior. Total time goes from 7 to 11."],
+    7: ["Both runs do the same work. The second takes longer because the I/O wait and P1's CPU work do not overlap.",
+        "The second question is today's topic: FCFS, SJF, Round Robin, Priority, MLFQ."],
+    8: ["Cases 1–2 are the top timeline, cases 3–4 the bottom one. Process or thread does not change the timeline."],
+    9: ["The code is correct on its own. The problem appears when the steps of two threads interleave, even on one core."],
+    10: ["The program is three instructions: read, add, write. If the interrupt lands between them, an update is lost.",
+         "The code never changed, only the interrupt timing. A program that relies on timing for correctness is broken."],
+    11: ["On Linux a thread waiting for a lock is put to sleep with a futex. Scheduling ≠ synchronization."],
+    12: ["FCFS: P2 arrived at time 3 but waits until P1 finishes.",
+         "RR q=2: at time 2 P2 has not arrived yet, so P1 continues; at time 4 it is P2's turn."],
+    13: ["The total work is still 14 ms. Only the order changed. A real OS does not know job lengths; it estimates them from the past."],
+    14: ["SRTF is not on the site; draw it on the board. If short jobs keep arriving, a long job can starve."],
+    15: ["The answer is SJF: P3 finishes at time 2, P2 at time 5. But SJF assumes job lengths are known in advance."],
+    16: ["The two P1 boxes at 9–13 and 13–17 are not a real switch; nobody else is in the queue.",
+         "Tiny quantum: everyone gets a turn quickly, but switching costs grow. Huge quantum: RR turns into FCFS."],
+    17: ["Matching the SJF order is a coincidence. Present MLFQ as a strategy, not as implementation detail."],
+    18: ["Give students 5 minutes to draw it on paper, then check on the site."],
+    19: ["Moving is not free: T3's data was in Core 1's cache."],
+    20: ["Exit question: which of today's results came from waiting, which from scheduling, which from shared memory?"],
+}
+
+OSTEP_LINKS = {
+    "tr": "📖 **OSTEP kitabı (ücretsiz):** [pages.cs.wisc.edu/~remzi/OSTEP](https://pages.cs.wisc.edu/~remzi/OSTEP/) · "
+          "**Simülatörler:** [github.com/remzi-arpacidusseau/ostep-homework](https://github.com/remzi-arpacidusseau/ostep-homework)",
+    "en": "📖 **OSTEP book (free):** [pages.cs.wisc.edu/~remzi/OSTEP](https://pages.cs.wisc.edu/~remzi/OSTEP/) · "
+          "**Simulators:** [github.com/remzi-arpacidusseau/ostep-homework](https://github.com/remzi-arpacidusseau/ostep-homework)",
+}
+
+UI = {
+    "tr": {"panel": "📝 Eğitmen · tahtaya çizilecekler ve anlatım", "say": "Söyleyin", "board": "Tahta",
+           "slides": "PPT v2 slayt", "steps": "Çizim ve anlatım sırası", "video": "tahta videosunu göster"},
+    "en": {"panel": "📝 Instructor · board drawing and script", "say": "Say", "board": "Board",
+           "slides": "PPT v2 slides", "steps": "Drawing and narration steps", "video": "show the board video"},
+}
+
 SLIDES = [
     {
         "kicker": "Slide 1 · What is OSTEP?",
         "title": "OSTEP: the simulation engine behind this website",
         "body": """
         <b>OSTEP</b> = <i>Operating Systems: Three Easy Pieces</i> by Remzi and Andrea Arpaci-Dusseau (UW–Madison),
-        a free textbook organised around <b>virtualization, concurrency and persistence</b>.
+        a free textbook organised around <b>virtualization, concurrency and persistence</b> (<a href='https://pages.cs.wisc.edu/~remzi/OSTEP/' target='_blank'>pages.cs.wisc.edu/~remzi/OSTEP</a>).
         Its homework folder contains small Python simulators such as <code>process-run.py</code> and <code>x86.py</code>.
         <br><br>
         They <b>model</b> OS behavior step by step. They do <b>not</b> run or change a real kernel.
@@ -708,7 +757,11 @@ SLIDES = [
 
 def render_lecture_mode():
     st.header("🎓 Lecture Mode")
-    st.caption("Present one concept at a time. Instructor notes and board drawings are in the collapsed 📝 panel.")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        st.caption("Present one concept at a time. Instructor notes and board drawings are in the collapsed 📝 panel.")
+    with c2:
+        st.radio("Instructor notes", ["Türkçe", "English"], horizontal=True, key="notes_lang", label_visibility="collapsed")
     n = len(SLIDES)
     if "lecture_slide_idx" not in st.session_state:
         st.session_state.lecture_slide_idx = 0
@@ -746,7 +799,9 @@ def render_lecture_mode():
         elif demo == "schedule":
             render_scheduling_demo(key, **cur.get("demo_args", {}))
 
-    render_board(cur.get("board", []), cur.get("say", []))
+    lang = "en" if st.session_state.get("notes_lang", "Türkçe") == "English" else "tr"
+    say = SAY_EN.get(idx + 1, cur.get("say", [])) if lang == "en" else cur.get("say", [])
+    render_board(cur.get("board", []), say, lang, links=(idx == 0))
 
     st.divider()
     left, mid, right = st.columns([1, 2, 1])
