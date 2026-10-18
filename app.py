@@ -140,7 +140,8 @@ def gantt_sjf(jobs):
         metrics.append({"Process":j["name"],"Start":start,"Finish":end,"Waiting":start-j["arrival"],"Turnaround":end-j["arrival"],"Response":start-j["arrival"]})
     return rows, pd.DataFrame(metrics)
 
-def gantt_rr(jobs, q):
+def gantt_rr(jobs, q, trace=None):
+    """trace (optional list) receives (start, ready queue after the pick) at every scheduling decision."""
     jobs={n:{"arrival":a,"burst":b,"remaining":b,"first":None,"finish":None} for n,a,b in jobs}
     t=0; rows=[]; ready=[]; seen=set()
     def add_arrivals():
@@ -153,6 +154,7 @@ def gantt_rr(jobs, q):
             t=min(j["arrival"] for n,j in jobs.items() if j["remaining"]>0 and n not in seen)
             add_arrivals()
         n=ready.pop(0); j=jobs[n]
+        if trace is not None: trace.append((t, list(ready)))
         if j["first"] is None: j["first"]=t
         run=min(q,j["remaining"]); start=t; end=t+run; rows.append((n,start,end)); t=end; j["remaining"]-=run
         add_arrivals()
@@ -196,6 +198,93 @@ def render_process_demo(key_prefix, p0=(1, 0), p1=(4, 100), switch="SWITCH_ON_IO
         st.caption("OSTEP prints BLOCKED for the WAITING state. An asterisk (*) marks the step where an I/O completes.")
 
 
+SCHED_POLICY_HELP = {
+    "FCFS": "First-Come, First-Served: the process that arrived first runs to completion; no interruption.",
+    "SJF": "Shortest Job First (non-preemptive): when the CPU is free, the waiting process with the shortest burst runs to completion.",
+    "Round Robin": "Each process runs for at most one quantum, then goes to the end of the ready queue if it still has work.",
+}
+
+
+def schedule_explain(chosen, rows, policy, q, trace=None):
+    """Per-tick grid and a why-table for a schedule (rows = (name, start, end) segments)."""
+    arrival = {n: a for n, a, b in chosen}
+    burst = {n: b for n, a, b in chosen}
+    finish = {}
+    for n, a, e in rows:
+        finish[n] = max(finish.get(n, 0), e)
+    total = max(finish.values()) if finish else 0
+    run_at = ["idle"] * total
+    for n, a, e in rows:
+        for t in range(a, e):
+            run_at[t] = n
+    grid = {}
+    for n in arrival:
+        grid[n] = ["" if t < arrival[n] else ("RUN" if run_at[t] == n else ("done" if t >= finish[n] else "READY"))
+                   for t in range(total)]
+    grid["CPU"] = ["—" if x == "idle" else x for x in run_at]
+    queue_at = dict(trace or [])
+    if policy == "Round Robin":
+        grid["Ready queue (after the pick)"] = [" ".join(queue_at[t]) or "empty" if t in queue_at else "" for t in range(total)]
+    events = [""] * total
+    for n in arrival:
+        if arrival[n] < total:
+            events[arrival[n]] += f"{n} arrives "
+    why, prev = [], None
+    done_left = dict(burst)
+    for i, (n, st_, en) in enumerate(rows):
+        nxt = rows[i + 1][0] if i + 1 < len(rows) else None
+        waiting = [m for m in arrival if m != n and arrival[m] <= st_ and finish[m] > st_]
+        if prev and prev[2] < st_:
+            why.append((prev[2], st_, "idle", "No process has arrived yet: the CPU is idle."))
+        if prev and prev[0] == n and prev[2] == st_:
+            pick = f"Its quantum ended at {st_}, but the ready queue is empty → {n} continues (no context switch)"
+        elif policy == "FCFS":
+            pick = f"Arrived at {arrival[n]}, earliest among the waiting processes" if waiting else "No other process is waiting"
+        elif policy == "SJF":
+            pick = (f"Shortest burst ({burst[n]}) among the waiting processes ({', '.join(f'{m}: {burst[m]}' for m in waiting)})"
+                    if waiting else "No other process is waiting")
+        else:
+            pick = (f"Head of the ready queue (queue: {' '.join([n] + list(dict(trace or []).get(st_, [])))})"
+                    if waiting else "No other process is waiting")
+        done_left[n] -= en - st_
+        if done_left[n] == 0:
+            end = f"finishes its burst of {burst[n]} at {en}"
+        else:
+            end = f"uses its full quantum of {q} and still needs {done_left[n]} → goes to the end of the ready queue"
+            if en < total:
+                events[en] += f"⏱ {n} stays (queue empty) " if nxt == n else f"⏱ {n} out → {nxt} "
+        late = [m for m in arrival if m != n and st_ < arrival[m] < en]
+        note = (f" {', '.join(late)} arrived meanwhile and {'waits' if len(late) == 1 else 'wait'}: " +
+                ("no preemption in this policy." if policy != "Round Robin" else "the running process keeps the CPU until its quantum ends.")) if late else ""
+        why.append((st_, en, n, f"{pick}; {end}.{note}"))
+        prev = (n, st_, en)
+    grid["Events"] = events
+    return pd.DataFrame(grid, index=[str(t) for t in range(total)]).T, why
+
+
+def render_schedule_explain(chosen, rows, metrics, policy, q, trace=None):
+    grid, why = schedule_explain(chosen, rows, policy, q, trace)
+    st.markdown("**Tick by tick** — one column per time unit")
+    colors = {"RUN": "#BBF7D0", "READY": "#FEF08A"}
+    st.dataframe(grid.style.map(lambda v: f"background-color: {colors[v]}" if v in colors else ""), width="stretch")
+    st.caption("RUN = on the CPU · READY = arrived and waiting for the CPU (uses no CPU) · empty = not arrived yet · done = finished.")
+    with st.expander("❓ Why did this happen? — every block of the Gantt chart explained", expanded=True):
+        trs = "".join(f"<tr><td style='padding:4px 8px;white-space:nowrap'>{a}–{b}</td><td style='white-space:nowrap'><b>{n}</b></td>"
+                      f"<td style='padding:4px 8px'>{html_mod.escape(w)}</td></tr>" for a, b, n, w in why)
+        st.markdown("<table style='width:100%;border-collapse:collapse;font-size:.88rem'><tr style='background:#F1F5F9'>"
+                    "<th style='padding:4px 8px;text-align:left'>Time</th><th style='text-align:left'>On CPU</th>"
+                    "<th style='text-align:left'>Why?</th></tr>" + trs + "</table>", unsafe_allow_html=True)
+    arrival = {n: a for n, a, b in chosen}
+    burst = {n: b for n, a, b in chosen}
+    lines = [f"**{r.Process}**: turnaround {r.Finish} − {arrival[r.Process]} = {r.Turnaround} · "
+             f"waiting {r.Turnaround} − {burst[r.Process]} = {r.Waiting} · response {r.Start} − {arrival[r.Process]} = {r.Response}"
+             for r in metrics.itertuples()]
+    with st.expander("How are the metrics calculated?", expanded=False):
+        st.markdown("- **Turnaround** = finish − arrival: total time in the system\n"
+                    "- **Waiting** = turnaround − burst: time spent READY, not running\n"
+                    "- **Response** = first start − arrival: how long until the process first got the CPU\n\n" + "\n\n".join(lines))
+
+
 DEFAULT_JOBS = [("P1",0,8),("P2",1,4),("P3",2,2),("P4",3,5)]
 
 def render_scheduling_demo(key_prefix, jobs=None, n_jobs=4, policy="FCFS", quantum=2):
@@ -208,17 +297,26 @@ def render_scheduling_demo(key_prefix, jobs=None, n_jobs=4, policy="FCFS", quant
         with cols[idx]:
             if idx < n:
                 st.markdown(f"**{name}**")
-                ar=st.number_input(f"{name} arrival",0,20,a,key=f"{key_prefix}_ar{name}")
-                bu=st.number_input(f"{name} burst",1,30,b,key=f"{key_prefix}_bu{name}")
+                ar=st.number_input(f"{name} arrival",0,20,a,key=f"{key_prefix}_ar{name}",
+                                   help="The time unit at which the process enters the ready queue.")
+                bu=st.number_input(f"{name} burst",1,30,b,key=f"{key_prefix}_bu{name}",
+                                   help="CPU burst: how many time units of CPU the process needs in total.")
                 chosen.append((name,ar,bu))
+    st.caption("**Arrival** = when the process becomes READY (enters the ready queue). "
+               "**Burst** = how many time units of CPU work it needs. Time is in abstract units (think ms).")
     pols = ["FCFS", "SJF", "Round Robin"]
     pol=st.radio("Policy", pols, index=pols.index(policy), horizontal=True, key=f"{key_prefix}_policy")
-    q=st.slider("Time Quantum (Round Robin)",1,10,quantum,key=f"{key_prefix}_quantum")
+    st.caption(SCHED_POLICY_HELP[pol])
+    q=st.slider("Time Quantum (Round Robin)",1,10,quantum,key=f"{key_prefix}_quantum", disabled=pol!="Round Robin")
+    st.caption("Quantum = the maximum CPU time per turn; a process that finishes earlier releases the CPU at once."
+               if pol == "Round Robin" else "The quantum is used only by Round Robin.")
     if st.button("▶ Run scheduling simulation", type="primary", key=f"{key_prefix}_run_sched"):
+        trace = []
         if pol=="FCFS": rows,metrics=gantt_fcfs(chosen)
         elif pol=="SJF": rows,metrics=gantt_sjf(chosen)
-        else: rows,metrics=gantt_rr(chosen, q)
+        else: rows,metrics=gantt_rr(chosen, q, trace)
         render_gantt(rows)
+        render_schedule_explain(chosen, rows, metrics, pol, q, trace)
         st.dataframe(metrics, hide_index=True, width="stretch")
         c1,c2,c3=st.columns(3)
         c1.metric("Average waiting time", f"{metrics['Waiting'].mean():.2f}")
