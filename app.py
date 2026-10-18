@@ -299,6 +299,7 @@ GLOSSARY = {
     "Thread": ("Thread", "An execution flow inside a process. Threads of one process share memory but each has its own registers, stack and state."),
     "Main thread": ("Main thread (T0)", "The first thread of a process; it runs main(). Here it creates T1 and T2 and waits for them in pthread_join() — like a parent process that waits for its children with wait()."),
     "Thread pool": ("Thread pool", "A fixed set of threads created up front and reused: each takes the next job from a shared queue, avoiding the cost of creating a thread per job."),
+    "DMA": ("Direct Memory Access", "Hardware that copies data between a device and memory without the CPU executing a copy loop; an interrupt tells the CPU when it is done."),
     "Blocking call": ("Blocking call", "A call such as read() or sleep() that can make the thread wait (BLOCKED) without using the CPU."),
     "pthread_join": ("pthread_join()", "Makes the calling thread wait (BLOCKED) until the given thread has finished."),
     "Mutex": ("Mutual exclusion lock", "Only one thread at a time may hold it; others trying to lock it wait (WAITING)."),
@@ -418,6 +419,9 @@ def render_deck(prefix, slides, demos, say_en_map=None, qa_map=None, links_on_fi
     layer_pills(cur.get("layers"))
     lecture_slide(cur["kicker"], cur["title"], cur["body"], cur.get("flow"))
     render_terms(cur.get("terms"))
+    for sec_title, sec_md in cur.get("sections", []):
+        with st.expander(sec_title, expanded=False):
+            st.markdown(sec_md)
     if cur.get("code"):
         code_pair(*cur["code"])
     demo = cur.get("demo")
@@ -1222,7 +1226,9 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
                "The OS gives each thread a time slice of at most 4 ticks (this policy gets its name, Round Robin, on Lecture Mode slide 14 and is worked out in Demo 4).")
     lanes, core_lanes, output, total, t1_ready, slices = thread_simulate(nc, sl, wk, 4)
     st.markdown("**Thread states over time** (one process P0; time slice up to 4 ticks)")
-    render_lanes([("main (T0)" if n == "main" else n, l) for n, l in lanes.items()], STATE_COLORS)
+    io_lane = ["T1's I/O" if x == "BLOCKED" else "idle" for x in lanes["T1"]]
+    render_lanes([("main (T0)" if n == "main" else n, l) for n, l in lanes.items()] + [("I/O device", io_lane)],
+                 {**STATE_COLORS, "T1's I/O": "#FED7AA"})
     st.markdown("**Which thread is on each core?**")
     render_lanes([(f"Core {c}", [("T0" if x == "main" else x) for x in l]) for c, l in enumerate(core_lanes)],
                  {"T0": "#E5E7EB", "T1": "#BFDBFE", "T2": "#BBF7D0"})
@@ -1233,6 +1239,17 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
         rows = {("main (T0)" if n == "main" else n): [abbr[x] for x in l] for n, l in lanes.items()}
         for c, l in enumerate(core_lanes):
             rows[f"Core {c}"] = [("T0" if x == "main" else ("—" if x == "idle" else x)) for x in l]
+        rows["I/O device"] = ["busy" if x == "BLOCKED" else "" for x in lanes["T1"]]
+        why = [""] * total
+        for n in ("T1", "T2"):
+            seq = lanes[n]
+            for i in range(total):
+                if seq[i] == "READY":
+                    prev = seq[i - 1] if i > 0 else "—"
+                    reason = {"—": "new, waits in queue", "BLOCKED": "woke up (I/O done)", "RUNNING": "preempted (slice over)"}.get(prev)
+                    if reason:
+                        why[i] = (why[i] + " · " if why[i] else "") + f"{n} {reason}"
+        rows["Why READY?"] = why
         marks = [""] * total
         for tk, c, r, kind in slices:
             who = "T0" if r == "main" else r
@@ -1336,16 +1353,55 @@ THREAD_SLIDES = [
         "title": "One process, two threads: who does the OS schedule?",
         "body": """
         In Week 4 we saw that a process can contain several threads. This week: the OS <b>schedules those threads</b>.
-        <br>In process <b>P0</b>, <b>T1 (file reader)</b> is <b>BLOCKED</b> waiting for the disk, while
-        <b>T2 (calculator)</b> is <b>RUNNING</b> on CPU core 0.
+        <table style='width:100%;border-collapse:collapse;margin:10px 0;font-size:1rem'>
+        <tr style='background:#F1F5F9'><th style='text-align:left;padding:5px'>Thread</th><th style='text-align:left'>What it does</th><th style='text-align:left'>Does it use the CPU?</th></tr>
+        <tr><td style='padding:5px'><b>T0 · main</b></td><td>Creates the threads, waits in <code>pthread_join()</code></td><td>Yes, while creating and when it continues</td></tr>
+        <tr><td style='padding:5px'><b>T1 · file reader</b></td><td>Starts I/O, waits, processes the data · <code>RUNNING → BLOCKED (I/O) → READY → RUNNING</code></td><td>Yes, in its RUNNING phases</td></tr>
+        <tr><td style='padding:5px'><b>T2 · calculator</b></td><td>Computes</td><td>Yes, in its RUNNING phases</td></tr></table>
         <br><br><b>main (T0)</b> is the process's first thread, the one that runs <code>main()</code>. Like a <i>parent</i>, it creates
         its <i>children</i> T1 and T2 with <code>pthread_create()</code> and then waits for them in <code>pthread_join()</code> —
         just as a parent process waits for its child with <code>wait()</code> after <code>fork()</code> (Week 3).
         <br><br><b>One process ≠ one execution flow · One blocked thread ≠ entire process blocked</b>
         """,
-        "flow": "OS schedules runnable threads: CPU core 0 → T2 while T1 is BLOCKED",
+        "flow": "CPU allocation — snapshot at t = 4:  Core 0 → T2 (RUNNING)  ·  T1 → BLOCKED (I/O)  ·  T0 → BLOCKED (join)",
+        "sections": [
+            ("I/O-bound ≠ CPU-free", """
+A file reader must **execute CPU instructions to request I/O**. While the device works it is **BLOCKED** and uses no CPU.
+When the I/O completes it becomes **READY**, and then **RUNNING** again to process the data.
+
+`T1: RUNNING (request I/O) → BLOCKED (device works) → READY → RUNNING (process data)`
+
+**Can a thread be both I/O-bound and RUNNING?** Yes. *I/O-bound* describes the workload (it mostly waits),
+not the thread's current state. RUNNING is a state of the thread, not of the I/O device.
+"""),
+            ("Which activities do not execute as CPU threads?", """
+| Activity | Does it run as a thread (RUNNING)? | Why |
+| --- | --- | --- |
+| Disk transferring data | No | Device / controller activity |
+| DMA copying into memory | No | The DMA hardware moves the data |
+| Network card receiving packets | No | Happens in the NIC hardware |
+| SSD internal flash operations | No | The SSD controller does it |
+| GPU shader computation | Not as a CPU thread | Separate GPU execution units |
+| Hardware timer counting | No | A hardware timer |
+| A BLOCKED thread | Not while it waits | It may run later |
+| A READY thread | Not at this moment | It waits for a CPU |
+
+Careful: while devices work, the CPU may still run **interrupt handlers and driver code**, so device work is not "free" for the CPU.
+
+> Hardware activities do not have application-thread states. READY, RUNNING and BLOCKED describe software execution contexts.
+"""),
+            ("Application vs OS vs Hardware in this demo", """
+| Application | Operating system | Hardware |
+| --- | --- | --- |
+| T1: `read(file)` (here `sleep(3)`) | Manages thread states and scheduling | CPU executes instructions |
+| T2: `calculate()` | Handles blocking, wake-up and CPU assignment | Storage controller performs the device operation |
+| T0: `pthread_join()` | Chooses which READY thread runs, and for how long | DMA transfers the data where supported |
+
+**Application defines the workload. The OS controls CPU allocation. Hardware determines execution capacity.**
+"""),
+        ],
         "layers": ["app", "os"],
-        "terms": ["Thread", "Main thread", "Blocking call", "pthread_join"],
+        "terms": ["Thread", "Main thread", "Blocking call", "pthread_join", "DMA"],
         "code": (("app", "Application code · C (POSIX threads)", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED)),
         "board": ["V18_1"],
         "say": ["Week 4'te bir process'in birden çok thread içerebileceğini gördük. Bu hafta OS'nin bu thread'leri nasıl zamanladığını görüyoruz.",
@@ -1353,17 +1409,29 @@ THREAD_SLIDES = [
                 "sleep(3) gerçek dosya okuma değil; thread'in CPU kullanmadan beklemesini temsil ediyor. Gerçek I/O için read() kullanılabilir.",
                 "pthread_create() kullanıcı alanındaki kütüphane arayüzü; Linux'ta thread'i kernel mekanizmaları oluşturur.",
                 "main (T0) process'in ilk thread'i. Week 3'teki ebeveyn-çocuk ilişkisini hatırlatın: ebeveyn fork() ile çocuk yaratıp wait() ile bekliyordu; burada main pthread_create() ile T1 ve T2'yi yaratıp pthread_join() ile bekliyor.",
-                "Teknik not: POSIX thread'leri eşittir, OS aralarında ebeveyn-çocuk hiyerarşisi tutmaz; herhangi bir thread başka bir thread'i join edebilir. 'Ebeveyn' process'lerden ödünç alınmış bir benzetme."],
+                "Teknik not: POSIX thread'leri eşittir, OS aralarında ebeveyn-çocuk hiyerarşisi tutmaz; herhangi bir thread başka bir thread'i join edebilir. 'Ebeveyn' process'lerden ödünç alınmış bir benzetme.",
+                "Altta 'CPU allocation — snapshot at t = 4' yazıyor: Core 0 T2'ye sürekli verilmiş değil, yalnızca o anda T2 çalışıyor.",
+                "Üç açılır bölümü sırayla açın: I/O-bound CPU kullanmamak demek değildir; disk, DMA, ağ kartı gibi donanım faaliyetlerinin thread durumu yoktur; uygulama, OS ve donanım ayrı işler yapar."],
         "say_en": ["In Week 4 we learned that a process can contain multiple threads. This week we learn how the OS schedules those threads.",
                    "T1 is blocked, but that does not mean the entire application must stop: T2 can still run.",
                    "sleep(3) is not a real file read; it stands for a thread waiting without using the CPU. For real blocking I/O we could use read().",
                    "pthread_create() is a user-space library interface; on Linux the thread is created by kernel mechanisms.",
                    "main (T0) is the process's first thread. Recall the parent-child relation from Week 3: the parent created a child with fork() and waited with wait(); here main creates T1 and T2 with pthread_create() and waits with pthread_join().",
-                   "Technical note: POSIX threads are peers; the OS keeps no parent-child hierarchy between them, and any thread can join another. 'Parent' is an analogy borrowed from processes."],
+                   "Technical note: POSIX threads are peers; the OS keeps no parent-child hierarchy between them, and any thread can join another. 'Parent' is an analogy borrowed from processes.",
+                   "The flow line says 'CPU allocation — snapshot at t = 4': Core 0 is not permanently given to T2; T2 just happens to run at that moment.",
+                   "Open the three sections in order: I/O-bound does not mean CPU-free; hardware activities such as disk, DMA or the network card have no thread states; application, OS and hardware do different jobs."],
         "qa": [("Çizelgedeki main nedir?",
                 "Process başlarken OS'nin oluşturduğu ilk thread (main thread, T0); main() fonksiyonunu çalıştırır. Bir ebeveyn gibi T1 ve T2'yi yaratır (zaman 0), sonra pthread_join ile onları bekler (JOIN, CPU kullanmaz) ve ikisi bitince return ile process'i sonlandırır (zaman 11).",
                 "What is main in the timeline?",
                 "The first thread the OS creates when the process starts (main thread, T0); it runs main(). Like a parent it creates T1 and T2 (time 0), then waits for them in pthread_join (JOIN, no CPU) and ends the process with return once both are done (time 11)."),
+               ("I/O-bound bir thread hiç CPU kullanmaz mı?",
+                "Kullanır. I/O'yu istemek ve gelen veriyi işlemek CPU komutlarıdır; thread o anlarda RUNNING'dir. Yalnızca cihazın çalıştığı süre boyunca BLOCKED olur ve CPU kullanmaz. I/O-bound iş yükünün özelliğidir, o anki durum değil.",
+                "Does an I/O-bound thread use no CPU at all?",
+                "It does use the CPU. Requesting the I/O and processing the data are CPU instructions, and the thread is RUNNING then. Only while the device works is it BLOCKED and CPU-free. I/O-bound describes the workload, not the current state."),
+               ("Diskin veri aktarması ya da DMA bir thread olarak RUNNING olur mu?",
+                "Hayır. Bunlar donanım faaliyetleridir; READY, RUNNING ve BLOCKED yazılım yürütme bağlamlarının durumlarıdır. Ama cihazlar çalışırken CPU'da interrupt handler ve sürücü kodu çalışabilir.",
+                "Does the disk's data transfer or DMA run as a thread (RUNNING)?",
+                "No. These are hardware activities; READY, RUNNING and BLOCKED are states of software execution contexts. But while devices work, interrupt handlers and driver code may run on the CPU."),
                ("Thread'lerde de process'lerdeki gibi gerçek bir ebeveyn-çocuk ilişkisi var mı?",
                 "Hayır, bu bir benzetme. Process'lerde ebeveyn-çocuk ilişkisi OS tarafından tutulur (fork/wait). POSIX thread'leri eşittir: herhangi bir thread başka bir thread'i join edebilir. Ama main'in yaratıp beklemesi, fork() ve wait() ile aynı kalıbı izler.",
                 "Do threads have a real parent-child relation like processes?",
@@ -1418,6 +1486,10 @@ THREAD_SLIDES = [
                 "dd her senkron yazmada diski bekleyip bloke oluyor: 327 voluntary context switch. Uykusuz thread_demo neredeyse hiç beklemiyor: CPU payı %88. Involuntary sayısı sunucudaki diğer yüke göre değişiyor.",
                 "In the real measurement, why is voluntary high for the I/O job and CPU share high for the CPU job?",
                 "dd blocks on every synchronous write while waiting for the disk: 327 voluntary context switches. thread_demo without sleep hardly waits: 88% CPU share. The involuntary count varies with other load on the server."),
+               ("T1 uyandığında neden hemen çalışmadı?",
+                "Uyanan thread önce READY olur ve hazır kuyruğuna girer. O anda CPU'da T2 çalışıyordu; T2'nin dilimi dolduğunda scheduler kuyruğun başındaki T1'i seçti. Yani belirleyici olan yalnızca quantum değil, hazır kuyruğun sırası ve scheduler'ın kararı.",
+                "Why did T1 not run as soon as it woke up?",
+                "A thread that wakes up first becomes READY and joins the ready queue. T2 was on the CPU at that moment; when T2's slice ended, the scheduler picked T1 from the head of the queue. So it is not only the quantum but also the ready-queue order and the scheduler's decision."),
                ("Zaman dilimi (quantum) 4 ne demek?",
                 "OS bir thread'e CPU'yu en fazla 4 tick kesintisiz verir. Dilim dolduğunda başka READY thread varsa onu keser (⏱ out); yoksa aynı thread devam eder (⏱ stays). Thread daha önce bloke olur ya da biterse dilimin tamamını kullanmaz. Bu, uygulamanın sleep süresi değil, scheduler'ın politikasıdır.",
                 "What does the time slice (quantum) of 4 mean?",
