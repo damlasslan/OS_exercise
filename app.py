@@ -1052,15 +1052,109 @@ LECTURE_DEMOS = {
 
 
 # ---------------------------------------------------------------------------
-# Real-World Systems: four sector examples from the Week 6 deck
+# Real-World Systems: four sector examples, each with two dimensions
+#   Section 2 · Synchronization (safety)  and  Section 3 · CPU Scheduling (execution)
 # ---------------------------------------------------------------------------
 def _steps_table(rows, cols):
     st.table(pd.DataFrame(rows, columns=cols).set_index(cols[0]))
 
 
-# --- Banking ---------------------------------------------------------------
+def render_lanes(lanes, colors, total=None):
+    """lanes: list of (label, timeline list of names per ms). Draws one row per lane."""
+    total = total or max(len(tl) for _, tl in lanes)
+    html = ""
+    for label, tl in lanes:
+        segs, start = [], 0
+        for i in range(1, len(tl) + 1):
+            if i == len(tl) or tl[i] != tl[start]:
+                segs.append((tl[start], start, i)); start = i
+        html += (f"<div style='display:flex;align-items:center;gap:6px;margin:4px 0'>"
+                 f"<div style='width:90px;font-weight:700;font-size:.85rem;color:#334155'>{label}</div>"
+                 f"<div style='display:flex;gap:2px;flex:1'>")
+        for name, a, b in segs:
+            bg = colors.get(name, "#E5E7EB") if name != "idle" else "#FFFFFF"
+            html += (f"<div style='width:{(b-a)/total*100}%;background:{bg};border:1px solid #CBD5E1;border-radius:8px;"
+                     f"padding:6px 2px;text-align:center;font-weight:700;font-size:.8rem'>{'' if name == 'idle' else name}"
+                     f"<br><span class='small'>{a}-{b}</span></div>")
+        html += "</div></div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def periodic_simulate(tasks, policy, horizon, quantum=2):
+    """tasks: (name, period or None, cpu ms, priority). One core, 1 ms ticks.
+    policy 'priority' = fixed priority, preemptive; 'rr' = Round Robin."""
+    jobs, timeline, queue = [], [], []
+    current, used = None, 0
+    for t in range(horizon):
+        for name, period, cpu, prio in tasks:
+            if (period and t % period == 0) or (period is None and t == 0):
+                job = {"task": name, "release": t, "deadline": (t + period) if period else None,
+                       "left": cpu, "prio": prio, "finish": None}
+                jobs.append(job); queue.append(job)
+        ready = [j for j in queue if j["left"] > 0]
+        if policy == "priority":
+            current = max(ready, key=lambda j: (j["prio"], -j["release"])) if ready else None
+        else:
+            if current is not None and (current["left"] == 0 or used >= quantum):
+                if current["left"] > 0:
+                    queue.remove(current); queue.append(current)
+                current, used = None, 0
+            if current is None:
+                ready = [j for j in queue if j["left"] > 0]
+                current, used = (ready[0], 0) if ready else (None, 0)
+        if current is None:
+            timeline.append("idle"); continue
+        timeline.append(current["task"])
+        current["left"] -= 1; used += 1
+        if current["left"] == 0:
+            current["finish"] = t + 1
+    return timeline, jobs
+
+
+def multicore_simulate(jobs, cores, policy="FCFS", quantum=1):
+    """jobs: (name, arrival, burst). Global ready queue shared by `cores` cores, 1 ms ticks."""
+    state = {n: {"arrival": a, "burst": b, "left": b, "first": None, "finish": None} for n, a, b in jobs}
+    queue, running, used, t, seen = [], [None] * cores, [0] * cores, 0, set()
+    timeline = [[] for _ in range(cores)]
+    while any(s["left"] > 0 for s in state.values()):
+        for n, a, b in sorted(jobs, key=lambda j: (j[1], j[0])):
+            if a <= t and n not in seen:
+                queue.append(n); seen.add(n)
+        for c in range(cores):
+            r = running[c]
+            if r is not None and (state[r]["left"] == 0 or (policy == "RR" and used[c] >= quantum and queue)):
+                if state[r]["left"] > 0:
+                    queue.append(r)
+                running[c] = None
+            if running[c] is None and queue:
+                running[c] = queue.pop(0); used[c] = 0
+        for c in range(cores):
+            r = running[c]
+            timeline[c].append(r or "idle")
+            if r is not None:
+                s = state[r]
+                if s["first"] is None: s["first"] = t
+                s["left"] -= 1; used[c] += 1
+                if s["left"] == 0: s["finish"] = t + 1
+        t += 1
+    return state, timeline
+
+
+def _deadline_table(jobs, task_names):
+    rows = []
+    for j in jobs:
+        if j["deadline"] is None or j["task"] not in task_names:
+            continue
+        met = j["finish"] is not None and j["finish"] <= j["deadline"]
+        rows.append({"Task": j["task"], "Released (ms)": j["release"], "Deadline (ms)": j["deadline"],
+                     "Finished (ms)": str(j["finish"]) if j["finish"] is not None else "not yet",
+                     "Deadline met?": "yes" if met else "MISSED"})
+    return rows
+
+
+# --- Banking -------------------------------------------------------------------
 def bank_trace(cores, lock, interleaved, last_writer):
-    """Return (rows, final) for T1 +10 and T2 −20 on balance 100."""
+    """Return (rows, cols, final) for T1 +10 and T2 −20 on balance 100."""
     if cores == 1:
         cols = ["Time", "CPU (one core)", "balance"]
         if lock:
@@ -1114,71 +1208,49 @@ def render_bank_demo(key):
         st.error(f"Lost update: the {'deposit' if final == 80 else 'withdrawal'} was overwritten. Both threads read 100.")
 
 
-# --- Robotic surgery: real-time priority --------------------------------
-RT_TASKS = [  # name, period (None = one-shot), cpu ms, priority (higher = more urgent)
-    ("Motor", 4, 1, 3),
-    ("Camera", 8, 4, 2),
-    ("Logging", None, 8, 1),
-]
+BANK_COLORS = {"Report": "#E5E7EB", "ATM-A": "#DBEAFE", "Mobile-B": "#DCFCE7", "ATM-C": "#FEF3C7"}
 
 
-def rt_simulate(policy, log_ms=8, horizon=16, quantum=3):
-    tasks = [(n, p, (log_ms if n == "Logging" else c), pr) for n, p, c, pr in RT_TASKS]
-    jobs, timeline, queue = [], [], []
-    current, used = None, 0
-    for t in range(horizon):
-        for name, period, cpu, prio in tasks:
-            if (period and t % period == 0) or (period is None and t == 0):
-                job = {"task": name, "release": t, "deadline": (t + period) if period else None,
-                       "left": cpu, "prio": prio, "finish": None}
-                jobs.append(job); queue.append(job)
-        ready = [j for j in queue if j["left"] > 0]
-        if policy == "priority":
-            current = max(ready, key=lambda j: (j["prio"], -j["release"])) if ready else None
-        else:  # Round Robin
-            if current is not None and (current["left"] == 0 or used >= quantum):
-                if current["left"] > 0:
-                    queue.remove(current); queue.append(current)
-                current, used = None, 0
-            if current is None:
-                ready = [j for j in queue if j["left"] > 0]
-                current, used = (ready[0], 0) if ready else (None, 0)
-        if current is None:
-            timeline.append("idle"); continue
-        timeline.append(current["task"])
-        current["left"] -= 1; used += 1
-        if current["left"] == 0:
-            current["finish"] = t + 1
-    return timeline, jobs
-
-
-def render_rt_demo(key):
+def render_bank_sched_demo(key):
     c1, c2 = st.columns([2, 1])
     with c1:
-        pol = st.radio("Scheduling policy", ["Round Robin (quantum 3 ms)", "Fixed priority, preemptive (SCHED_FIFO-like)"],
-                       key=f"{key}_pol")
+        pol = st.radio("Scheduling policy", ["FCFS", "SJF", "Round Robin (quantum 2 ms)"], horizontal=True, key=f"{key}_pol")
+    with c2:
+        rep = st.slider("End-of-day report (ms)", 4, 14, 10, key=f"{key}_rep")
+    jobs = [("Report", 0, rep), ("ATM-A", 1, 1), ("Mobile-B", 2, 2), ("ATM-C", 3, 1)]
+    if pol == "FCFS": rows, m = gantt_fcfs(jobs)
+    elif pol == "SJF": rows, m = gantt_sjf(jobs)
+    else: rows, m = gantt_rr(jobs, 2)
+    tl = []
+    for name, a, b in rows:
+        tl += [name] * (b - a)
+    render_lanes([("CPU", tl)], BANK_COLORS)
+    st.dataframe(m, hide_index=True, width="stretch")
+    short = m[m["Process"] != "Report"]
+    c1, c2 = st.columns(2)
+    c1.metric("Avg response of the 3 short requests", f"{short['Response'].mean():.2f} ms")
+    c2.metric("Report finishes at", f"{int(m[m['Process'] == 'Report']['Finish'].iloc[0])} ms")
+    if short["Response"].mean() > 3:
+        st.error("Convoy effect: customers at the ATM wait behind the batch report.")
+    else:
+        st.success("Short requests get the CPU within a few ms; the report finishes a bit later. That is the trade-off.")
+
+
+# --- Robotic surgery ------------------------------------------------------------
+ROBOT_TASKS = [("Motor", 4, 1, 3), ("Camera", 8, 4, 2), ("Logging", None, 8, 1)]
+ROBOT_COLORS = {"Motor": "#FECACA", "Camera": "#DBEAFE", "Logging": "#E5E7EB"}
+
+
+def render_robot_sched_demo(key):
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        pol = st.radio("Scheduling policy", ["Round Robin (quantum 3 ms)", "Fixed priority, preemptive (SCHED_FIFO-like)"], key=f"{key}_pol")
     with c2:
         log_ms = st.slider("Logging work (ms)", 2, 12, 8, key=f"{key}_log")
-    timeline, jobs = rt_simulate("priority" if pol.startswith("Fixed") else "rr", log_ms)
-    rows, start = [], 0
-    for i in range(1, len(timeline) + 1):
-        if i == len(timeline) or timeline[i] != timeline[start]:
-            rows.append((timeline[start], start, i)); start = i
-    colors = {"Motor": "#FECACA", "Camera": "#DBEAFE", "Logging": "#E5E7EB", "idle": "#FFFFFF"}
-    html = "<div style='display:flex;gap:2px;width:100%;margin:10px 0'>"
-    for name, a, b in rows:
-        html += (f"<div style='width:{(b-a)/len(timeline)*100}%;background:{colors[name]};border:1px solid #CBD5E1;"
-                 f"border-radius:8px;padding:8px 2px;text-align:center;font-weight:700;font-size:.85rem'>{name}"
-                 f"<br><span class='small'>{a}-{b}</span></div>")
-    st.markdown(html + "</div>", unsafe_allow_html=True)
-    table = []
-    for j in jobs:
-        if j["deadline"] is None:
-            continue
-        met = j["finish"] is not None and j["finish"] <= j["deadline"]
-        table.append({"Task": j["task"], "Released (ms)": j["release"], "Deadline (ms)": j["deadline"],
-                      "Finished (ms)": str(j["finish"]) if j["finish"] is not None else "not yet",
-                      "Deadline met?": "yes" if met else "MISSED"})
+    tasks = [(n, p, (log_ms if n == "Logging" else c), pr) for n, p, c, pr in ROBOT_TASKS]
+    timeline, jobs = periodic_simulate(tasks, "priority" if pol.startswith("Fixed") else "rr", 16, quantum=3)
+    render_lanes([("CPU", timeline)], ROBOT_COLORS)
+    table = _deadline_table(jobs, {"Motor", "Camera"})
     st.dataframe(pd.DataFrame(table), hide_index=True, width="stretch")
     misses = sum(1 for r in table if r["Task"] == "Motor" and r["Deadline met?"] == "MISSED")
     st.metric("Motor-control deadline misses (0–16 ms)", misses)
@@ -1188,7 +1260,44 @@ def render_rt_demo(key):
         st.success("Motor control met every deadline: as soon as it is released it preempts lower-priority work.")
 
 
-# --- Online ticket reservation: the last seat ---------------------------------
+def robot_inversion_trace(inherit):
+    """Logging (low) holds the state lock; Motor (high) needs it; Camera (medium) does not."""
+    if not inherit:
+        tl = ["Logging", "Logging*", "Logging*", "Camera", "Camera", "Camera", "Camera", "Camera", "Logging*", "Motor", "Motor"]
+        events = [[0, "Logging runs (priority 1)", ""], [1, "Logging locks the shared state", "lock: Logging"],
+                  [2, "Motor arrives (priority 3), needs the lock → WAITING", "lock: Logging"],
+                  [3, "Camera arrives (priority 2) and preempts Logging", "lock: Logging"],
+                  [8, "Camera done; Logging finally continues", "lock: Logging"],
+                  [9, "Logging unlocks → Motor runs", "lock: Motor"], [11, "Motor finishes (deadline was 6)", "free"]]
+        finish = 11
+    else:
+        tl = ["Logging", "Logging*", "Logging*", "Logging*", "Motor", "Motor", "Camera", "Camera", "Camera", "Camera", "Camera"]
+        events = [[0, "Logging runs (priority 1)", ""], [1, "Logging locks the shared state", "lock: Logging"],
+                  [2, "Motor arrives, needs the lock → WAITING; Logging inherits priority 3", "lock: Logging"],
+                  [3, "Camera arrives (priority 2) but cannot preempt Logging (now 3)", "lock: Logging"],
+                  [4, "Logging unlocks, drops back to priority 1 → Motor runs", "lock: Motor"],
+                  [6, "Motor finishes on time → Camera runs", "free"], [11, "Camera finishes", "free"]]
+        finish = 6
+    return tl, events, finish
+
+
+def render_robot_inversion_demo(key):
+    inherit = st.toggle("Use a priority-inheritance mutex (PTHREAD_PRIO_INHERIT)", key=f"{key}_inherit")
+    tl, events, finish = robot_inversion_trace(inherit)
+    colors = {"Motor": "#FECACA", "Camera": "#DBEAFE", "Logging": "#E5E7EB", "Logging*": "#FDE68A"}
+    render_lanes([("CPU", tl)], colors)
+    st.caption("Logging* = Logging inside the critical section (holding the lock).")
+    _steps_table(events, ["Time (ms)", "Event", "Lock"])
+    c1, c2 = st.columns(2)
+    c1.metric("Motor finishes at", f"{finish} ms")
+    c2.metric("Motor deadline", "6 ms")
+    if finish > 6:
+        st.error("Priority inversion: the medium-priority camera delayed the high-priority motor task by keeping the lock holder off the CPU.")
+    else:
+        st.success("Priority inheritance let Logging finish its critical section quickly; Motor met its deadline.")
+
+
+# --- Online ticket reservation ------------------------------------------------
 def render_ticket_demo(key):
     c1, c2 = st.columns(2)
     with c1:
@@ -1225,7 +1334,29 @@ def render_ticket_demo(key):
         st.success("Exactly one ticket was sold." + (" The database made check-and-book one atomic step." if safe else " Here only because the requests did not overlap."))
 
 
-# --- Video streaming: producer / consumer ---------------------------------------
+def render_ticket_sched_demo(key):
+    c1, c2 = st.columns(2)
+    with c1:
+        cores = st.radio("CPU cores (one worker per core)", [1, 2, 4], horizontal=True, key=f"{key}_cores")
+    with c2:
+        pol = st.radio("Scheduling policy", ["FCFS", "Round Robin (quantum 1 ms)"], horizontal=True, key=f"{key}_pol")
+    reqs = [(f"R{i}", 0, 2) for i in range(1, 9)]
+    state, timeline = multicore_simulate(reqs, cores, "RR" if pol.startswith("Round") else "FCFS", 1)
+    palette = ["#DBEAFE", "#DCFCE7", "#FEF3C7", "#FCE7F3", "#EDE9FE", "#E0F2FE", "#FFE4E6", "#ECFCCB"]
+    colors = {f"R{i}": palette[i - 1] for i in range(1, 9)}
+    render_lanes([(f"Core {c+1}", tl) for c, tl in enumerate(timeline)], colors)
+    resp = [s["first"] - s["arrival"] for s in state.values()]
+    fin = [s["finish"] for s in state.values()]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Avg response", f"{sum(resp)/len(resp):.2f} ms")
+    c2.metric("Avg completion", f"{sum(fin)/len(fin):.2f} ms")
+    c3.metric("Last request done", f"{max(fin)} ms")
+    c4.metric("Requests running at the same instant", cores)
+    st.info("More cores finish the burst sooner, but they also let more workers check the same seat at the same instant: "
+            "the double-booking race from the previous slide becomes more likely, not less.")
+
+
+# --- Video streaming --------------------------------------------------------------
 def stream_simulate(capacity=4, prebuffer=2, rate=2, slow_rate=0, slow_len=6, slow_start=5, horizon=20):
     level, started, rows, stalls = 0, False, [], 0
     for t in range(horizon):
@@ -1266,6 +1397,28 @@ def render_stream_demo(key):
         st.success("No stall: the buffer absorbed the congestion. While the network thread waited for I/O, the decoder kept running.")
 
 
+def render_stream_sched_demo(key):
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        pol = st.radio("Scheduling policy", ["Fair Round Robin (quantum 2 ms)", "Decoder has higher priority"], key=f"{key}_pol")
+    with c2:
+        upd = st.slider("Background update work (ms)", 6, 30, 20, key=f"{key}_upd")
+    tasks = [("Decoder", 5, 3, 2), ("Update", None, upd, 1)]
+    timeline, jobs = periodic_simulate(tasks, "priority" if pol.startswith("Decoder") else "rr", 30, quantum=2)
+    render_lanes([("CPU", timeline)], {"Decoder": "#DCFCE7", "Update": "#E5E7EB"})
+    table = _deadline_table(jobs, {"Decoder"})
+    for r in table:
+        r["Frame"] = r.pop("Task")
+    st.dataframe(pd.DataFrame(table), hide_index=True, width="stretch")
+    dropped = sum(1 for r in table if r["Deadline met?"] == "MISSED")
+    st.metric("Dropped frames (0–30 ms, one frame every 5 ms)", dropped)
+    if dropped:
+        st.error("Frames were late: fair sharing gave the background update the CPU while a frame was due.")
+    else:
+        st.success("Every frame was ready on time; the update simply used the CPU between frames.")
+
+
+# --- Application and OS code shown on the slides --------------------------------------
 APP_BANK = """void deposit(Account *a, int amount) {      // ATM, +10
     pthread_mutex_lock(&a->lock);
     a->balance = a->balance + amount;       // READ, ADD, WRITE
@@ -1285,6 +1438,43 @@ mutex_lock(m):
         schedule();
     }
     m->owner = current;"""
+APP_BANK_SCHED = """// nightly batch job: long CPU burst
+void end_of_day_report(void) {
+    setpriority(PRIO_PROCESS, 0, 19);   // ask for LOW priority
+    for (each account) add_interest();
+}
+
+// request handlers: tiny CPU bursts
+void handle_atm(Request *r) {
+    check_pin(r);
+    update_balance(r);
+}"""
+OS_BANK_SCHED = """// FCFS: the report keeps the CPU until it finishes
+// Round Robin: share the CPU in slices
+on_timer_tick():
+    if (++current->used == QUANTUM && !ready_empty())
+        preempt(current);        // ATM request runs next
+
+on_arrival(req):  ready_push(req);"""
+APP_ROBOT_LOCK = """pthread_mutexattr_t attr;
+pthread_mutexattr_init(&attr);
+pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+pthread_mutex_init(&state_lock, &attr);
+
+// Logging (low):  lock → copy robot state → unlock
+// Motor   (high): lock → read robot state → unlock → actuate"""
+OS_ROBOT_LOCK = """mutex_lock(m):
+    if (m->owner != NULL) {
+        if (m->protocol == PRIO_INHERIT &&
+            m->owner->prio < current->prio)
+            m->owner->prio = current->prio;   // boost holder
+        current->state = WAITING;
+        schedule();
+    }
+
+mutex_unlock(m):
+    current->prio = current->base_prio;      // drop boost
+    wake_highest_waiter(m);"""
 APP_RT = """void *motor_control(void *arg) {           // every 4 ms
     for (;;) {
         read_sensors();
@@ -1301,11 +1491,7 @@ OS_RT = """on_release(job):                     // timer: new period
     if (job->prio > current->prio)
         preempt(current);                // urgent work first
 
-pick_next(): return highest_priority(ready_queue);
-
-mutex_lock(m):                         // priority inheritance
-    if (m->owner && m->owner->prio < current->prio)
-        m->owner->prio = current->prio;"""
+pick_next(): return highest_priority(ready_queue);"""
 APP_TICKET = """-- UNSAFE: check, then act (two statements)
 SELECT owner FROM seats WHERE id = 'A12';     -- NULL: free
 UPDATE seats SET owner = :user WHERE id = 'A12';
@@ -1313,14 +1499,31 @@ UPDATE seats SET owner = :user WHERE id = 'A12';
 -- SAFE: one atomic conditional statement
 UPDATE seats SET owner = :user
  WHERE id = 'A12' AND owner IS NULL;          -- 0 rows = sold out"""
-OS_TICKET = """// burst: thousands of short requests
-worker_pool = 8 threads, cores = 4
+OS_TICKET = """// two workers on two cores: same instant
+core1: run(worker_A);   core2: run(worker_B);
 
-on_request(r):  ready_push(worker_for(r));
-pick_next():    round_robin(ready_queue);  // fair, low latency
+// the database, not the scheduler, serialises the row:
+row_lock(seat_A12):
+    if (locked) { current->state = WAITING; schedule(); }"""
+APP_TICKET_SCHED = """// web server: one worker thread per CPU core
+for (int i = 0; i < num_cores; i++)
+    pthread_create(&w[i], NULL, worker_loop, NULL);
 
-// 4 cores → up to 4 workers run at the SAME instant.
-// The scheduler cannot stop two of them booking one seat."""
+void *worker_loop(void *arg) {
+    for (;;) {
+        Request r = next_request();   // burst at sale opening
+        book_seat(&r);                // ~2 ms of CPU
+        reply(&r);
+    }
+}"""
+OS_TICKET_SCHED = """// global ready queue shared by all cores
+on_core_idle(core):
+    core->current = ready_pop();     // load balancing
+
+// Round Robin, quantum 1 ms: everyone starts early
+on_timer_tick(core):
+    if (++core->current->used == 1 && !ready_empty())
+        preempt(core->current);"""
 APP_STREAM = """void *network(void *a) {                       // producer
     for (;;) {
         Chunk c = download_next();             // I/O: blocks
@@ -1348,64 +1551,67 @@ OS_STREAM = """cond_wait(cv, m):
 cond_signal(cv):
     t = wait_queue_pop(cv);
     t->state = READY;           // scheduler may pick it"""
+APP_STREAM_SCHED = """// decoder: 3 ms of CPU for every frame, one frame every 5 ms
+struct sched_param p = { .sched_priority = 50 };
+pthread_setschedparam(decoder, SCHED_FIFO, &p);
+
+// background app update: 20 ms of CPU, not urgent
+setpriority(PRIO_PROCESS, updater_pid, 19);"""
+OS_STREAM_SCHED = """on_frame_timer():                  // every 5 ms
+    release(decoder_job, deadline = now + 5);
+
+pick_next():
+    // fair RR: decoder and update take turns
+    // priority: decoder first whenever it is READY
+    return policy == RR ? ready_head() : highest_priority();"""
 
 
 def _design_table(rows):
-    body = "".join(f"<tr><td style='padding:6px 10px;font-weight:700'>{a}</td><td style='padding:6px 10px'>{b}</td></tr>" for a, b in rows)
+    body = "".join(f"<tr><td style='padding:6px 10px;font-weight:700;vertical-align:top'>{a}</td><td style='padding:6px 10px'>{b}</td></tr>" for a, b in rows)
     return f"<table style='width:100%;border-collapse:collapse;font-size:1.02rem'>{body}</table>"
 
+
+S2 = "Section 2 · Synchronization"
+S3 = "Section 3 · CPU Scheduling"
 
 SECTOR_SLIDES = [
     {
         "kicker": "Real-world systems · Overview",
-        "title": "Four systems, three questions",
+        "title": "Four systems, two dimensions",
         "body": """
-        The same OS ideas appear in every real system. For each one we ask:
-        <b>What must run?</b> (processes and threads) · <b>What must be protected?</b> (shared data) ·
-        <b>What must be optimized?</b> (correctness, deadline, latency, throughput).
+        Every real system needs <b>both</b> dimensions from this week:
+        <br><b>Section 2 · Synchronization (safety):</b> can shared data stay correct?
+        <br><b>Section 3 · CPU Scheduling (execution):</b> who runs, when, and on which core?
+        <br><br>For each system we ask: <b>What must run? What must be protected? What must be optimized?</b>
         <br><br><b>Banking</b> · <b>Robotic surgery</b> · <b>Online ticket reservation</b> · <b>Video streaming</b>
         """,
-        "flow": "Application defines the work → OS schedules it → hardware limits true parallelism",
-        "say": ["Bu dört örnek ders notlarındaki dört mimari. Her birinde üç soruyu soracağız: ne çalışmalı, ne korunmalı, ne optimize edilmeli?"],
-        "say_en": ["These are the four architectures from the lecture notes. For each we ask three questions: what must run, what must be protected, what must be optimized?"],
+        "flow": "Scheduling ≠ synchronization — both affect the same running system",
+        "say": ["Bu dört örnek ders notlarındaki dört mimari. Her birinde iki demo var: biri senkronizasyon (bölüm 2), biri scheduling (bölüm 3).",
+                "Her sistemde üç soruyu soracağız: ne çalışmalı, ne korunmalı, ne optimize edilmeli?"],
+        "say_en": ["These are the four architectures from the lecture notes. Each has two demos: one for synchronization (section 2) and one for scheduling (section 3).",
+                   "For each system we ask three questions: what must run, what must be protected, what must be optimized?"],
         "qa": [("Scheduling ile synchronization arasındaki fark nedir?",
                 "Scheduling kimin, ne zaman ve hangi çekirdekte çalışacağına karar verir. Synchronization paylaşılan verinin doğru kalmasını sağlar. İkisi aynı sistemde birlikte gerekir.",
                 "What is the difference between scheduling and synchronization?",
                 "Scheduling decides who runs, when and on which core. Synchronization keeps shared data correct. A real system needs both.")],
     },
-    # ---- Banking ----
+    # ======================= Banking =======================
     {
-        "kicker": "Banking · Layers 1–2",
+        "kicker": f"Banking · {S2}",
         "title": "Banking: two requests, one account",
         "body": """
         An ATM deposit (<b>+10</b>) and a mobile transfer (<b>−20</b>) hit the same account (balance <b>100</b>) at the same time.
-        Each request is served by a worker thread. On two cores they can run at the <b>same instant</b>.
+        <br><b>Predict:</b> without a lock, both threads read 100. What can the final balance be?
+        Try 1 and 2 cores, change who writes last, then turn the <b>mutex</b> on.
         """,
-        "layers": ["app", "os"],
+        "layers": ["app", "os", "run", "res"],
         "terms": ["Mutex", "Transaction", "Lost update"],
         "code": (("app", "Application code · C and SQL", APP_BANK), ("os", "OS kernel · pseudocode", OS_BANK)),
-        "say": ["Bu, Demo 2'nin bankacılık versiyonu: counter++ yerine bakiye güncellemesi.",
-                "Gerçek bankalar bunu çoğunlukla veritabanı transaction'ı ve izolasyonla çözer; mutex aynı fikrin bellek içi hali."],
-        "say_en": ["This is the banking version of Demo 2: a balance update instead of counter++.",
-                   "Real banks usually solve this with database transactions and isolation; a mutex is the in-memory form of the same idea."],
-        "qa": [("Bu işlemlerden önce bakiye 100 ise doğru sonuç nedir?",
-                "100 + 10 − 20 = 90.",
-                "If the balance is 100, what is the correct result?",
-                "100 + 10 − 20 = 90.")],
-    },
-    {
-        "kicker": "Banking · Layers 3–4 · LIVE",
-        "title": "Banking: lose an update, then fix it",
-        "body": """
-        <b>Predict:</b> without a lock, both threads read 100 at the same time. What can the final balance be?
-        <br>Try <b>1 core</b> and <b>2 cores</b>, change who writes last, then turn the <b>mutex</b> on.
-        """,
-        "layers": ["run", "res"],
         "demo": "bank",
-        "say": ["Önce kilitsiz, 'Overlapping' ile çalıştırın: sonuç 80 veya 110. Sonra mutex'i açın: her zaman 90.",
-                "Tek çekirdekte de aynı hata oluşur; iki çekirdek yalnızca ihtimali artırır."],
-        "say_en": ["First run without the lock, 'Overlapping': the result is 80 or 110. Then turn the mutex on: always 90.",
-                   "The same bug happens on one core; two cores only make it more likely."],
+        "say": ["Bu, Demo 2'nin bankacılık versiyonu. Önce kilitsiz, 'Overlapping' ile çalıştırın: sonuç 80 veya 110. Sonra mutex'i açın: her zaman 90.",
+                "Gerçek bankalar bunu çoğunlukla veritabanı transaction'ı ve izolasyonla çözer; mutex aynı fikrin bellek içi hali."],
+        "say_en": ["This is the banking version of Demo 2. First run without the lock, 'Overlapping': the result is 80 or 110. Then turn the mutex on: always 90.",
+                   "Real banks usually solve this with database transactions and isolation; a mutex is the in-memory form of the same idea."],
         "qa": [("Mutex yoksa sonuç ne olabilir?",
                 "İkisi de 100'ü okur. T1 110, T2 80 yazar; en son yazan kazanır. Sonuç 110 veya 80 olur, doğrusu 90.",
                 "Without a mutex, what can the result be?",
@@ -1416,59 +1622,103 @@ SECTOR_SLIDES = [
                 "Because the steps did not overlap. That is luck; when the timing changes the bug returns.")],
     },
     {
+        "kicker": f"Banking · {S3}",
+        "title": "Banking: ATM customers behind a batch report",
+        "body": """
+        At 0 ms a 10 ms <b>end-of-day report</b> starts. Three short requests arrive at 1, 2 and 3 ms (ATM 1 ms, mobile 2 ms, ATM 1 ms).
+        <br><b>Predict:</b> which policy gives the short requests the fastest response?
+        """,
+        "layers": ["app", "os", "run", "res"],
+        "terms": ["FCFS", "SJF", "RR", "Convoy effect"],
+        "code": (("app", "Application code · C", APP_BANK_SCHED), ("os", "OS kernel · pseudocode", OS_BANK_SCHED)),
+        "demo": "bank_sched",
+        "say": ["FCFS'te ATM müşterileri raporun arkasında bekliyor: ortalama yanıt 9,33 ms. Convoy effect.",
+                "SJF de yardım etmiyor (9,00 ms): non-preemptive, rapor zaten başlamış. Round Robin'de 2,00 ms; bedeli raporun 10 yerine 14'te bitmesi."],
+        "say_en": ["With FCFS the ATM customers wait behind the report: average response 9.33 ms. Convoy effect.",
+                   "SJF does not help either (9.00 ms): it is non-preemptive and the report has already started. Round Robin gives 2.00 ms; the price is the report finishing at 14 instead of 10."],
+        "qa": [("Kısa isteklere en hızlı yanıtı hangi politika verir?",
+                "Round Robin: ortalama 2,00 ms. FCFS 9,33 ms, SJF 9,00 ms.",
+                "Which policy gives the short requests the fastest response?",
+                "Round Robin: 2.00 ms on average. FCFS 9.33 ms, SJF 9.00 ms."),
+               ("SJF burada neden işe yaramıyor?",
+                "Bizim SJF'miz non-preemptive. Kısa istekler geldiğinde rapor zaten CPU'da; bitene kadar kesilmiyor.",
+                "Why does SJF not help here?",
+                "Our SJF is non-preemptive. When the short requests arrive the report is already on the CPU and is not interrupted until it ends."),
+               ("Rapor işi kendi önceliğini düşürebilir mi?",
+                "Evet: setpriority(…, 19) ile düşük öncelik isteyebilir (Linux'ta nice). Karar yine OS'nin.",
+                "Can the report job lower its own priority?",
+                "Yes: it can request a low priority with setpriority(…, 19) (nice on Linux). The decision is still the OS's.")],
+    },
+    {
         "kicker": "Banking · Design decision",
-        "title": "Banking: correctness first",
+        "title": "Banking: correct first, then responsive",
         "body": _design_table([
-            ("What must run?", "Short request handlers (ATM, mobile, web) as worker threads"),
+            ("What must run?", "Short request handlers (ATM, mobile, web) and long batch jobs"),
             ("What must be protected?", "Account balances: transactions / isolation, no lost update, no double spending"),
-            ("What must be optimized?", "Correctness first, then fair and fast handling of bursts of short requests"),
-            ("Scheduler's role", "Fair execution; on many cores, transactions really run in parallel"),
+            ("What must be optimized?", "Correctness first; then fast response for short requests"),
+            ("Section 2 answer", "Mutex or DB transaction around every read-modify-write"),
+            ("Section 3 answer", "Preemptive time sharing (RR) or low priority for batch jobs"),
         ]),
-        "flow": "Scheduling ≠ synchronization: more cores means more real parallel races",
-        "say": ["Scheduler bakiyeyi koruyamaz; doğruluk transaction veya kilit ile sağlanır."],
-        "say_en": ["The scheduler cannot protect the balance; correctness comes from transactions or locks."],
+        "flow": "More cores = more real parallel races, so correctness never comes from the scheduler",
+        "say": ["Scheduler bakiyeyi koruyamaz; doğruluk transaction veya kilitle sağlanır. Scheduler ise müşterinin ne kadar beklediğini belirler."],
+        "say_en": ["The scheduler cannot protect the balance; correctness comes from transactions or locks. The scheduler decides how long customers wait."],
         "qa": [("İki çekirdek bankayı daha hızlı yapar mı?",
                 "Farklı hesaplara gelen işlemler paralel hızlanır. Aynı hesabı güncelleyenler kilit yüzünden sırayla çalışır.",
                 "Do two cores make the bank faster?",
                 "Requests for different accounts speed up in parallel. Requests for the same account still take turns because of the lock.")],
     },
-    # ---- Robotic surgery ----
+    # ======================= Robotic surgery =======================
     {
-        "kicker": "Robotic surgery · Layers 1–2",
-        "title": "Robotic surgery: deadlines, not throughput",
+        "kicker": f"Robotic surgery · {S2}",
+        "title": "Robotic surgery: priority inversion",
         "body": """
-        A motor-control loop must finish <b>1 ms</b> of work in every <b>4 ms</b> period. A camera task needs <b>4 ms</b> every <b>8 ms</b>.
-        Logging is background work. Missing a motor deadline means an unsafe command.
+        <b>Logging</b> (priority 1) and <b>motor control</b> (priority 3) share the robot-state lock. <b>Camera</b> (priority 2) does not need it.
+        Motor control arrives at 2 ms with a deadline of 6 ms.
+        <br><b>Predict:</b> can the medium-priority camera delay the high-priority motor task? Then turn on <b>priority inheritance</b>.
         """,
-        "layers": ["app", "os"],
-        "terms": ["Real-time", "SCHED_FIFO", "Deadline", "WCET"],
-        "code": (("app", "Application code · C (POSIX)", APP_RT), ("os", "OS kernel · pseudocode", OS_RT)),
-        "say": ["Uygulama öncelik ister (SCHED_FIFO); OS izin ve politikalara göre uygular.",
-                "Burada önemli olan ortalama süre değil, her periyotta son tarihe yetişmek."],
-        "say_en": ["The application requests a priority (SCHED_FIFO); the OS applies it according to permissions and policy.",
-                   "What matters here is not average time but meeting the deadline in every period."],
-        "qa": [("Bu sistemde neyi optimize ederiz?",
-                "Ortalama bekleme süresini değil, son tarihleri. Bir deadline kaçırmak güvenlik hatasıdır.",
-                "What do we optimize in this system?",
-                "Deadlines, not average waiting time. Missing one deadline is a safety failure.")],
+        "layers": ["app", "os", "run", "res"],
+        "terms": ["Priority inversion", "Priority inheritance", "Mutex"],
+        "code": (("app", "Application code · C (POSIX)", APP_ROBOT_LOCK), ("os", "OS kernel · pseudocode", OS_ROBOT_LOCK)),
+        "demo": "robot_lock",
+        "say": ["Kilitsiz değil, kilit var; ama kilit sahibi düşük öncelikli. Kamera onu kesince motor kontrolü dolaylı olarak kamerayı bekliyor: 11'de bitiyor, deadline 6.",
+                "Priority inheritance açılınca Logging geçici olarak öncelik 3'e çıkıyor, kritik bölümü 4'te bitiriyor, motor 6'da bitiyor.",
+                "Bilinen örnek: 1997'de Mars Pathfinder'daki tekrar eden resetler priority inversion yüzündendi; priority inheritance açılarak düzeltildi."],
+        "say_en": ["There is a lock, but its holder has low priority. When the camera preempts it, motor control indirectly waits for the camera: it finishes at 11, deadline 6.",
+                   "With priority inheritance, Logging temporarily runs at priority 3, finishes its critical section at 4, and motor control finishes at 6.",
+                   "A well-known case: the repeated resets on Mars Pathfinder in 1997 were caused by priority inversion and fixed by enabling priority inheritance."],
+        "qa": [("Priority inversion nedir?",
+                "Yüksek öncelikli thread, düşük öncelikli thread'in tuttuğu kilidi bekler; bu sırada orta öncelikli thread düşük olanı CPU'dan uzak tutar.",
+                "What is priority inversion?",
+                "A high-priority thread waits for a lock held by a low-priority thread, while a medium-priority thread keeps the low one off the CPU."),
+               ("Priority inheritance olmadan ve onunla motor kontrolü ne zaman bitiyor?",
+                "Olmadan 11 ms'de (deadline 6, kaçırıldı). Onunla 6 ms'de (zamanında).",
+                "When does motor control finish without and with priority inheritance?",
+                "Without it at 11 ms (deadline 6, missed). With it at 6 ms (on time)."),
+               ("Bu bir senkronizasyon sorunu mu, scheduling sorunu mu?",
+                "İkisinin kesiştiği yer: kilit (senkronizasyon) ile öncelikli scheduling'in etkileşimi. Çözüm de ikisini birleştiriyor.",
+                "Is this a synchronization problem or a scheduling problem?",
+                "It sits where they meet: a lock (synchronization) interacting with priority scheduling. The fix combines both.")],
     },
     {
-        "kicker": "Robotic surgery · Layers 3–4 · LIVE",
+        "kicker": f"Robotic surgery · {S3}",
         "title": "Robotic surgery: Round Robin vs fixed priority",
         "body": """
-        <b>Predict:</b> with fair Round Robin (quantum 3 ms), does motor control meet every 4 ms deadline?
-        <br>Run Round Robin, then switch to <b>fixed priority, preemptive</b>. Then try a short logging job (2 ms).
+        Motor control: <b>1 ms</b> every <b>4 ms</b>. Camera: <b>4 ms</b> every <b>8 ms</b>. Logging: background work.
+        <br><b>Predict:</b> with fair Round Robin (quantum 3 ms), does motor control meet every 4 ms deadline?
+        Then switch to <b>fixed priority, preemptive</b>, and try a short logging job (2 ms).
         """,
-        "layers": ["run", "res"],
-        "demo": "rt",
-        "say": ["Round Robin adil ama adil olmak burada yanlış hedef: motor kontrolü kamera ve log işinin arkasında bekliyor.",
+        "layers": ["app", "os", "run", "res"],
+        "terms": ["Real-time", "SCHED_FIFO", "Deadline", "WCET"],
+        "code": (("app", "Application code · C (POSIX)", APP_RT), ("os", "OS kernel · pseudocode", OS_RT)),
+        "demo": "robot_sched",
+        "say": ["Round Robin adil ama adil olmak burada yanlış hedef: motor kontrolü kamera ve log işinin arkasında bekliyor ve 2 deadline kaçırıyor.",
                 "Sabit öncelikte motor kontrolü her periyot başında diğer işleri kesiyor ve hiç deadline kaçırmıyor."],
-        "say_en": ["Round Robin is fair, but fairness is the wrong goal here: motor control waits behind camera and logging work.",
+        "say_en": ["Round Robin is fair, but fairness is the wrong goal here: motor control waits behind camera and logging work and misses 2 deadlines.",
                    "With fixed priority, motor control preempts the others at the start of every period and never misses a deadline."],
         "qa": [("Round Robin'de motor kontrolü neden deadline kaçırıyor?",
-                "Kuyrukta kamera ve log işinin arkasında sırasını bekliyor. Log 8 ms iken 8. ms'de gelen iş ancak 13'te bitiyor (deadline 12), 12. ms'deki iş hiç bitmiyor. Log 2 ms'ye inince RR de yetişiyor.",
+                "Kuyrukta kamera ve log işinin arkasında bekliyor. Log 8 ms iken 8. ms'de gelen iş 13'te bitiyor (deadline 12), 12. ms'deki iş hiç bitmiyor. Log 2 ms'ye inince RR de yetişiyor.",
                 "Why does motor control miss a deadline with Round Robin?",
-                "It waits for its turn behind camera and logging work. With 8 ms of logging, the job released at 8 ms finishes at 13 (deadline 12) and the one released at 12 never finishes. With 2 ms of logging RR also makes it."),
+                "It waits behind camera and logging work. With 8 ms of logging, the job released at 8 ms finishes at 13 (deadline 12) and the one released at 12 never finishes. With 2 ms of logging RR also makes it."),
                ("Real-time scheduling tek başına güvenliği garanti eder mi?",
                 "Hayır. WCET analizi, doğru öncelikler, priority inversion'a karşı önlem ve güvenli tasarım da gerekir.",
                 "Does real-time scheduling alone guarantee safety?",
@@ -1476,152 +1726,180 @@ SECTOR_SLIDES = [
     },
     {
         "kicker": "Robotic surgery · Design decision",
-        "title": "Robotic surgery: watch out for priority inversion",
+        "title": "Robotic surgery: deadlines, not throughput",
         "body": _design_table([
             ("What must run?", "Sensor → control → actuator loop, camera/vision, logging"),
-            ("What must be protected?", "Shared commands and state, with short, bounded critical sections"),
-            ("What must be optimized?", "Verified deadlines (WCET), not throughput"),
-            ("Scheduler's role", "Real-time priorities, admission and deadline analysis; control and vision on separate cores"),
-        ]) + "<br><b>Priority inversion:</b> if logging holds a lock that motor control needs, a medium-priority camera task can delay motor control. "
-             "<b>Priority inheritance</b> lets the lock holder run at the waiter's priority until it unlocks.",
-        "terms": ["Priority inversion", "Priority inheritance"],
-        "say": ["Bilinen örnek: 1997'de Mars Pathfinder'daki tekrar eden resetler priority inversion yüzündendi; priority inheritance açılarak düzeltildi."],
-        "say_en": ["A well-known case: the repeated resets on Mars Pathfinder in 1997 were caused by priority inversion and fixed by enabling priority inheritance."],
-        "qa": [("Priority inversion nedir?",
-                "Yüksek öncelikli thread, düşük öncelikli thread'in tuttuğu kilidi bekler; bu sırada orta öncelikli thread düşük olanı CPU'dan uzak tutar.",
-                "What is priority inversion?",
-                "A high-priority thread waits for a lock held by a low-priority thread, while a medium-priority thread keeps the low one off the CPU."),
-               ("Priority inheritance bunu nasıl çözer?",
-                "Kilidi tutan thread, kilidi bekleyen en yüksek öncelikli thread'in önceliğini geçici olarak alır, işini bitirip kilidi bırakır.",
-                "How does priority inheritance solve it?",
-                "The lock holder temporarily takes the priority of the highest-priority waiter, finishes and releases the lock.")],
+            ("What must be protected?", "Shared robot state and commands, with short, bounded critical sections"),
+            ("What must be optimized?", "Verified deadlines (WCET), not throughput or fairness"),
+            ("Section 2 answer", "Priority-inheritance mutexes, short critical sections"),
+            ("Section 3 answer", "Fixed real-time priorities, admission and deadline analysis; control and vision on separate cores"),
+        ]),
+        "flow": "A missed deadline is a failure, even if the average is excellent",
+        "say": ["Bu sistemde iki boyut iç içe: öncelikli scheduling, kilitlerle birlikte doğru kurulmazsa priority inversion çıkar."],
+        "say_en": ["Here the two dimensions are intertwined: priority scheduling combined with locks causes priority inversion unless set up correctly."],
+        "qa": [("Bu sistemde neyi optimize ederiz?",
+                "Ortalama bekleme süresini değil, son tarihleri. Bir deadline kaçırmak güvenlik hatasıdır.",
+                "What do we optimize in this system?",
+                "Deadlines, not average waiting time. Missing one deadline is a safety failure.")],
     },
-    # ---- Ticket reservation ----
+    # ======================= Ticket reservation =======================
     {
-        "kicker": "Online ticket reservation · Layers 1–2",
+        "kicker": f"Online ticket reservation · {S2}",
         "title": "Ticket reservation: the last seat",
         "body": """
-        Thousands of users click <b>Buy</b> when sales open. Each request is a short job handled by a worker thread.
-        Two users try to buy the <b>last seat (A12)</b> at the same moment, on two different cores.
+        Two users try to buy the <b>last seat (A12)</b> at the same moment, served by two workers on two cores.
+        <br><b>Predict:</b> how many tickets are confirmed for one seat? Run <b>check, then book</b>, then <b>one atomic conditional UPDATE</b>.
         """,
-        "layers": ["app", "os"],
+        "layers": ["app", "os", "run", "res"],
         "terms": ["Race condition", "Atomic"],
-        "code": (("app", "Application code · SQL", APP_TICKET), ("os", "OS kernel · pseudocode", OS_TICKET)),
-        "say": ["Önce kontrol et, sonra yaz: iki ayrı adım. Arada başka bir worker aynı kontrolü yapabilir.",
-                "Scheduler patlama trafiğinde adil ve hızlı yanıt için Round Robin benzeri davranır; ama koltuğu korumak onun işi değil."],
-        "say_en": ["Check, then write: two separate steps. Another worker can make the same check in between.",
-                   "Under burst traffic the scheduler behaves Round-Robin-like for fair, fast responses, but protecting the seat is not its job."],
-        "qa": [("SELECT sonra UPDATE neden güvensiz?",
-                "İki adım arasında başka bir worker da koltuğu boş görebilir; ikisi de satın alır.",
-                "Why is SELECT followed by UPDATE unsafe?",
-                "Between the two steps another worker can also see the seat as free; both buy it.")],
-    },
-    {
-        "kicker": "Online ticket reservation · Layers 3–4 · LIVE",
-        "title": "Ticket reservation: double booking",
-        "body": """
-        <b>Predict:</b> if both users click at the same moment, how many tickets are confirmed for one seat?
-        <br>Run <b>check, then book</b>, then switch to <b>one atomic conditional UPDATE</b>.
-        """,
-        "layers": ["run", "res"],
+        "code": (("app", "Application code · SQL", APP_TICKET), ("os", "OS kernel and database · pseudocode", OS_TICKET)),
         "demo": "ticket",
-        "say": ["Aynı anda tıklayınca iki onay çıkıyor: biri gerçekte koltuğa sahip değil.",
+        "say": ["Önce kontrol et, sonra yaz: iki ayrı adım. Aynı anda tıklayınca iki onay çıkıyor; biri gerçekte koltuğa sahip değil.",
                 "Atomik UPDATE'te veritabanı satırı kilitliyor; ikinci istek 0 satır değiştiriyor ve 'tükendi' alıyor."],
-        "say_en": ["When both click at the same moment, two confirmations appear: one of them does not really own the seat.",
+        "say_en": ["Check, then write: two separate steps. When both click at the same moment two confirmations appear; one of them does not really own the seat.",
                    "With the atomic UPDATE the database locks the row; the second request changes 0 rows and gets 'sold out'."],
         "qa": [("Aynı anda tıklanınca kaç bilet onaylanıyor?",
                 "Kontrol-sonra-yaz kodunda 2 (double booking). Atomik UPDATE ile 1.",
                 "How many tickets are confirmed when both click at the same moment?",
                 "Two with check-then-book (double booking). One with the atomic UPDATE."),
-               ("Daha fazla çekirdek bu hatayı azaltır mı?",
-                "Hayır, artırır: daha çok worker gerçekten aynı anda çalışır. Çözüm atomik veritabanı işlemi veya unique constraint.",
-                "Do more cores reduce this bug?",
-                "No, they increase it: more workers truly run at the same instant. The fix is an atomic database operation or a unique constraint.")],
+               ("SELECT sonra UPDATE neden güvensiz?",
+                "İki adım arasında başka bir worker da koltuğu boş görebilir; ikisi de satın alır.",
+                "Why is SELECT followed by UPDATE unsafe?",
+                "Between the two steps another worker can also see the seat as free; both buy it.")],
+    },
+    {
+        "kicker": f"Online ticket reservation · {S3}",
+        "title": "Ticket reservation: the burst at sale opening",
+        "body": """
+        When sales open, <b>8 requests</b> (2 ms of CPU each) arrive at the same moment. One worker runs per core.
+        <br><b>Predict:</b> how does the average response change with 1, 2 and 4 cores? What does Round Robin (quantum 1 ms) change?
+        """,
+        "layers": ["app", "os", "run", "res"],
+        "terms": ["FCFS", "RR", "Quantum"],
+        "code": (("app", "Application code · C", APP_TICKET_SCHED), ("os", "OS kernel · pseudocode", OS_TICKET_SCHED)),
+        "demo": "ticket_sched",
+        "say": ["FCFS'te ortalama yanıt 1 çekirdekte 7, 2'de 3, 4'te 1 ms. Çekirdek arttıkça patlama daha çabuk eriyor.",
+                "Round Robin (q=1) tek çekirdekte ilk yanıtı 7'den 3,5 ms'ye indiriyor ama ortalama bitişi 9'dan 12,5'e çıkarıyor: herkes erken başlıyor, geç bitiyor.",
+                "Aynı anda çalışan worker sayısı çekirdek sayısına eşit; bu da önceki slayttaki yarışın ihtimalini artırıyor."],
+        "say_en": ["With FCFS the average response is 7 ms on 1 core, 3 on 2 and 1 on 4. More cores melt the burst faster.",
+                   "Round Robin (q=1) on one core lowers the first response from 7 to 3.5 ms but raises the average completion from 9 to 12.5: everyone starts early and finishes late.",
+                   "The number of workers running at the same instant equals the number of cores, which makes the race from the previous slide more likely."],
+        "qa": [("1, 2 ve 4 çekirdekte ortalama yanıt nedir (FCFS)?",
+                "7, 3 ve 1 ms. Son istek 16, 8 ve 4 ms'de bitiyor.",
+                "What is the average response on 1, 2 and 4 cores (FCFS)?",
+                "7, 3 and 1 ms. The last request finishes at 16, 8 and 4 ms."),
+               ("Round Robin tek çekirdekte neyi iyileştirir, neyi kötüleştirir?",
+                "Ortalama yanıtı 7'den 3,5 ms'ye iyileştirir; ortalama bitişi 9'dan 12,5 ms'ye kötüleştirir. Son istek yine 16'da biter.",
+                "On one core, what does Round Robin improve and what does it make worse?",
+                "It improves average response from 7 to 3.5 ms and worsens average completion from 9 to 12.5 ms. The last request still finishes at 16."),
+               ("Daha fazla çekirdek double booking hatasını azaltır mı?",
+                "Hayır, artırır: daha çok worker gerçekten aynı anda çalışır. Çözüm atomik veritabanı işlemi.",
+                "Do more cores reduce the double-booking bug?",
+                "No, they increase it: more workers truly run at the same instant. The fix is an atomic database operation.")],
     },
     {
         "kicker": "Online ticket reservation · Design decision",
-        "title": "Ticket reservation: never sell one seat twice",
+        "title": "Ticket reservation: fast AND never sell one seat twice",
         "body": _design_table([
             ("What must run?", "Many short request handlers in a worker pool"),
             ("What must be protected?", "Each seat: atomic allocation, database constraints"),
             ("What must be optimized?", "Response latency and fairness under burst traffic"),
-            ("Scheduler's role", "Handle the burst fairly; reservation workers can run in parallel"),
+            ("Section 2 answer", "One atomic conditional UPDATE or a unique constraint per seat"),
+            ("Section 3 answer", "More cores and time sharing to melt the burst quickly"),
         ]),
-        "flow": "Fast scheduling + atomic allocation = fair AND correct",
-        "say": ["Hız ve doğruluk ayrı katmanlarda çözülüyor: hız scheduler'da, doğruluk veritabanında."],
-        "say_en": ["Speed and correctness are solved in different layers: speed in the scheduler, correctness in the database."],
+        "flow": "Speed comes from the scheduler and the cores; correctness comes from the database",
+        "say": ["Hız ve doğruluk ayrı katmanlarda çözülüyor: hız scheduler'da ve çekirdeklerde, doğruluk veritabanında."],
+        "say_en": ["Speed and correctness are solved in different layers: speed in the scheduler and cores, correctness in the database."],
         "qa": [("Bu sistemde scheduler neyi optimize etmeli?",
                 "Yanıt süresini ve adaleti: patlama anında her kullanıcı kısa sürede yanıt almalı.",
                 "What should the scheduler optimize here?",
                 "Response time and fairness: during a burst every user should get a quick answer.")],
     },
-    # ---- Video streaming ----
+    # ======================= Video streaming =======================
     {
-        "kicker": "Video streaming · Layers 1–2",
-        "title": "Video streaming: producer and consumer",
+        "kicker": f"Video streaming · {S2}",
+        "title": "Video streaming: producer, consumer and the buffer",
         "body": """
-        A <b>network thread</b> downloads chunks into a buffer (I/O-bound). A <b>decoder thread</b> takes one chunk per tick
-        and renders it (CPU-bound). They share the buffer and coordinate with a mutex and condition variables.
+        A <b>network thread</b> downloads chunks into a buffer; a <b>decoder thread</b> takes one chunk per tick.
+        <br><b>Predict:</b> the network stops for 6 ticks. With a buffer of 4 chunks, does playback stall? Then try a larger buffer.
         """,
-        "layers": ["app", "os"],
+        "layers": ["app", "os", "run", "res"],
         "terms": ["Producer–consumer", "Condition variable", "Underrun"],
         "code": (("app", "Application code · C (pthreads)", APP_STREAM), ("os", "OS kernel · pseudocode", OS_STREAM)),
-        "say": ["Buffer boşsa decoder cond_wait ile uyur ve CPU'yu bırakır; ağ yeni parça getirince uyandırılır.",
-                "Network thread çoğunlukla I/O bekler; bu sırada CPU decoder'ı çalıştırır. Bu, Demo 1'deki örtüşmenin aynısı."],
-        "say_en": ["If the buffer is empty, the decoder sleeps in cond_wait and gives up the CPU; it is woken when the network brings a new chunk.",
-                   "The network thread mostly waits for I/O; meanwhile the CPU runs the decoder. This is the same overlap as in Demo 1."],
-        "qa": [("Neden while (empty()) yazıyoruz, if değil?",
-                "Uyandırıldığında koşul hâlâ doğru olmayabilir (başka thread parçayı almış olabilir veya sahte uyanma). Koşul tekrar kontrol edilir.",
-                "Why do we write while (empty()) and not if?",
-                "When woken, the condition may no longer hold (another thread took the chunk, or a spurious wake-up). The condition is checked again.")],
-    },
-    {
-        "kicker": "Video streaming · Layers 3–4 · LIVE",
-        "title": "Video streaming: absorb the congestion",
-        "body": """
-        <b>Predict:</b> the network stops for 6 ticks. With a buffer of 4 chunks, does playback stall?
-        <br>Then make the buffer larger, or the congestion shorter, and compare the number of stalls.
-        """,
-        "layers": ["run", "res"],
         "demo": "stream",
-        "say": ["Varsayılan ayarlarda (buffer 4, tıkanma 6) buffer boşalıyor ve 3 tık takılma oluyor.",
-                "Buffer'ı büyütünce takılma azalıyor ama başlangıç gecikmesi ve bellek artıyor: klasik bir tasarım takası."],
-        "say_en": ["With the defaults (buffer 4, congestion 6) the buffer drains and playback stalls for 3 ticks.",
-                   "A larger buffer reduces stalls but costs start-up delay and memory: a classic design trade-off."],
+        "say": ["Buffer boşsa decoder cond_wait ile uyur ve CPU'yu bırakır; ağ yeni parça getirince uyandırılır.",
+                "Varsayılan ayarlarda (buffer 4, tıkanma 6) 3 tık takılma oluyor; buffer 8 olunca 1 tık."],
+        "say_en": ["If the buffer is empty, the decoder sleeps in cond_wait and gives up the CPU; it is woken when the network brings a new chunk.",
+                   "With the defaults (buffer 4, congestion 6) playback stalls for 3 ticks; with a buffer of 8, for 1 tick."],
         "qa": [("Varsayılan ayarlarda kaç tık takılma oluyor?",
                 "3 tık. Buffer tıkanma başladığında 3 parça içeriyor; 3 tıkta boşalıyor ve tıkanmanın kalan 3 tıkında decoder bekliyor.",
                 "How many stall ticks happen with the default settings?",
-                "3 ticks. The buffer holds 3 chunks when congestion starts; it drains in 3 ticks and the decoder waits for the remaining 3 ticks of congestion."),
+                "3 ticks. The buffer holds 3 chunks when congestion starts; it drains in 3 ticks and the decoder waits for the remaining 3 ticks."),
+               ("Neden while (empty()) yazıyoruz, if değil?",
+                "Uyandırıldığında koşul hâlâ doğru olmayabilir (başka thread parçayı almış olabilir veya sahte uyanma). Koşul tekrar kontrol edilir.",
+                "Why do we write while (empty()) and not if?",
+                "When woken, the condition may no longer hold (another thread took the chunk, or a spurious wake-up). The condition is checked again."),
                ("Takılma sırasında decoder CPU kullanır mı?",
                 "Hayır. Condition variable üzerinde WAITING durumunda uyur; CPU başka işleri çalıştırabilir.",
                 "Does the decoder use the CPU during a stall?",
                 "No. It sleeps in the WAITING state on the condition variable; the CPU can run other work.")],
     },
     {
+        "kicker": f"Video streaming · {S3}",
+        "title": "Video streaming: frame deadlines vs a background update",
+        "body": """
+        Every <b>5 ms</b> a frame is due; decoding it takes <b>3 ms</b>. A background app update needs <b>20 ms</b> of CPU.
+        <br><b>Predict:</b> with fair Round Robin, are frames dropped? Then give the decoder higher priority.
+        """,
+        "layers": ["app", "os", "run", "res"],
+        "terms": ["RR", "Priority", "Deadline"],
+        "code": (("app", "Application code · C (POSIX)", APP_STREAM_SCHED), ("os", "OS kernel · pseudocode", OS_STREAM_SCHED)),
+        "demo": "stream_sched",
+        "say": ["Adil Round Robin'de güncelleme işi kare zamanı gelmişken CPU'yu alıyor: 30 ms'de 5 kare gecikiyor.",
+                "Decoder öncelikli olunca hiç kare düşmüyor; güncelleme kareler arasındaki boşlukta ilerliyor."],
+        "say_en": ["With fair Round Robin the update takes the CPU while a frame is due: 5 frames are late in 30 ms.",
+                   "With decoder priority no frame is dropped; the update makes progress in the gaps between frames."],
+        "qa": [("Adil Round Robin'de kaç kare düşüyor?",
+                "Varsayılan ayarlarla 30 ms içinde 5 kare (5, 10, 15, 20 ve 25. ms'de gelen kareler). Decoder öncelikliyken 0.",
+                "How many frames are dropped with fair Round Robin?",
+                "With the defaults, 5 frames in 30 ms (those released at 5, 10, 15, 20 and 25 ms). With decoder priority, 0."),
+               ("Decoder'a öncelik vermek güncelleme işini aç bırakır mı?",
+                "Bu örnekte hayır: decoder CPU'nun %60'ını kullanıyor, kalan %40'ta güncelleme ilerliyor. Decoder CPU'nun tamamını isteseydi starvation olurdu.",
+                "Does giving the decoder priority starve the update?",
+                "Not here: the decoder uses 60% of the CPU and the update progresses in the remaining 40%. If the decoder wanted the whole CPU, the update would starve.")],
+    },
+    {
         "kicker": "Video streaming · Design decision",
         "title": "Video streaming: smooth playback",
         "body": _design_table([
-            ("What must run?", "Network (producer, I/O-bound) and decoder/renderer (consumer, CPU-bound)"),
+            ("What must run?", "Network (producer, I/O-bound), decoder/renderer (consumer, CPU-bound), background work"),
             ("What must be protected?", "The shared buffer: mutex + condition variables (or semaphores)"),
-            ("What must be optimized?", "No underrun (stalls), low start-up latency, responsive playback"),
-            ("Scheduler's role", "Run the decoder promptly when woken; decode and render may overlap on distinct cores"),
+            ("What must be optimized?", "No stalls and no late frames; low start-up latency"),
+            ("Section 2 answer", "Bounded buffer with condition variables, sized to absorb congestion"),
+            ("Section 3 answer", "Decoder ahead of background work; decode and render may overlap on distinct cores"),
         ]),
-        "flow": "I/O-bound producer + CPU-bound consumer + bounded buffer = overlap without corruption",
-        "say": ["Dört sistemin ortak dersi: uygulama işi tanımlar, OS yürütür, synchronization doğruluğu korur."],
-        "say_en": ["The common lesson of all four systems: the application defines the work, the OS executes it, synchronization protects correctness."],
+        "flow": "I/O-bound producer + CPU-bound consumer + bounded buffer + the right priority = smooth video",
+        "say": ["Dört sistemin ortak dersi: uygulama işi tanımlar, OS yürütür; synchronization doğruluğu, scheduling zamanlamayı korur."],
+        "say_en": ["The common lesson of all four systems: the application defines the work, the OS executes it; synchronization protects correctness, scheduling protects timing."],
         "qa": [("Bu dört sistemin hangisinde en önemli hedef deadline, hangisinde doğruluk?",
-                "Robotik cerrahi: deadline. Banka ve bilet: doğruluk (kayıp güncelleme ve çift satış olmamalı). Video: takılmasız oynatma ve düşük gecikme.",
-                "In which of the four systems is the main goal a deadline, and in which correctness?",
-                "Robotic surgery: deadlines. Banking and tickets: correctness (no lost update, no double booking). Video: smooth playback and low latency.")],
+                "Robotik cerrahi ve videoda deadline (kontrol periyodu, kare zamanı). Banka ve bilette doğruluk (kayıp güncelleme ve çift satış olmamalı); ardından yanıt süresi.",
+                "In which systems is the main goal a deadline, and in which correctness?",
+                "Robotic surgery and video: deadlines (control period, frame time). Banking and tickets: correctness (no lost update, no double booking), then response time.")],
     },
 ]
 
-SECTOR_DEMOS = {"bank": render_bank_demo, "rt": render_rt_demo, "ticket": render_ticket_demo, "stream": render_stream_demo}
+SECTOR_DEMOS = {
+    "bank": render_bank_demo, "bank_sched": render_bank_sched_demo,
+    "robot_lock": render_robot_inversion_demo, "robot_sched": render_robot_sched_demo,
+    "ticket": render_ticket_demo, "ticket_sched": render_ticket_sched_demo,
+    "stream": render_stream_demo, "stream_sched": render_stream_sched_demo,
+}
 
 
 def render_sector_mode():
     st.header("🏭 Real-World Systems")
-    st.caption("Lecture Mode for the four architectures in the Week 6 notes: application code, OS behavior, a live demo and the design decision.")
+    st.caption("Lecture Mode for the four architectures in the Week 6 notes. Each system has a Section 2 · Synchronization demo, "
+               "a Section 3 · CPU Scheduling demo and a design decision.")
     render_deck("sector", SECTOR_SLIDES, SECTOR_DEMOS)
 
 
