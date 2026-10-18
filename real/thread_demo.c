@@ -2,7 +2,8 @@
  * One process, two worker threads:
  *   T1 (reader)     prints, blocks in sleep(), prints   -> waits without using the CPU
  *   T2 (calculator) prints, runs a CPU loop, prints     -> pure CPU work
- * main waits for both with pthread_join().
+ * main (T0) is the process's first thread: like a parent, it creates its children
+ * T1 and T2 and waits for both with pthread_join() (compare fork()/wait() for processes).
  *
  * Optional arguments (used by the OS Exercise Lab measurement page):
  *   argv[1] = seconds T1 sleeps        (default 3; 0 = no sleep -> CPU-bound run)
@@ -41,14 +42,14 @@ void *calculator(void *arg) {
     return NULL;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) {             /* main thread (T0): the parent */
     if (argc > 1) sleep_seconds = (unsigned int)strtoul(argv[1], NULL, 10);
     if (argc > 2) iterations = strtoul(argv[2], NULL, 10);
 
     pthread_t t1, t2;
-    pthread_create(&t1, NULL, reader, NULL);
-    pthread_create(&t2, NULL, calculator, NULL);
-    pthread_join(t1, NULL);
-    pthread_join(t2, NULL);
+    pthread_create(&t1, NULL, reader, NULL);      /* child T1 */
+    pthread_create(&t2, NULL, calculator, NULL);  /* child T2 */
+    pthread_join(t1, NULL);                       /* wait for T1, like wait() */
+    pthread_join(t2, NULL);                       /* wait for T2 */
     return 0;
 }

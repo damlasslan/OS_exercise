@@ -297,6 +297,7 @@ GLOSSARY = {
     "Aging": ("Aging", "Gradually raising the priority of a job that has waited long, to prevent starvation."),
     "MLFQ": ("Multi-Level Feedback Queue", "Several priority queues; a job moves down when it uses its full slice and is periodically boosted back to the top."),
     "Thread": ("Thread", "An execution flow inside a process. Threads of one process share memory but each has its own registers, stack and state."),
+    "Main thread": ("Main thread (T0)", "The first thread of a process; it runs main(). Here it creates T1 and T2 and waits for them in pthread_join() — like a parent process that waits for its children with wait()."),
     "Blocking call": ("Blocking call", "A call such as read() or sleep() that can make the thread wait (BLOCKED) without using the CPU."),
     "pthread_join": ("pthread_join()", "Makes the calling thread wait (BLOCKED) until the given thread has finished."),
     "Mutex": ("Mutual exclusion lock", "Only one thread at a time may hold it; others trying to lock it wait (WAITING)."),
@@ -1207,10 +1208,11 @@ def render_thread_sched_demo(key, cores=1, sleep=3, work=6):
                        help="The for-loop in calculator(): pure CPU work.")
     lanes, core_lanes, output, total, t1_ready = thread_simulate(nc, sl, wk, 4)
     st.markdown("**Thread states over time** (one process P0; Round Robin, quantum 4)")
-    render_lanes([(n, l) for n, l in lanes.items()], STATE_COLORS)
+    render_lanes([("main (T0)" if n == "main" else n, l) for n, l in lanes.items()], STATE_COLORS)
     st.markdown("**Which thread is on each core?**")
-    render_lanes([(f"Core {c}", l) for c, l in enumerate(core_lanes)],
-                 {"main": "#E5E7EB", "T1": "#BFDBFE", "T2": "#BBF7D0"})
+    render_lanes([(f"Core {c}", [("T0" if x == "main" else x) for x in l]) for c, l in enumerate(core_lanes)],
+                 {"T0": "#E5E7EB", "T1": "#BFDBFE", "T2": "#BBF7D0"})
+    st.caption("main (T0) = the process's first thread: like a parent it creates T1 and T2, then waits for them in pthread_join (JOIN).")
     st.caption("States: RUNNING (green) · READY (yellow) · BLOCKED (blue) · BLOCKED in pthread_join (purple) · DONE (grey).")
     st.markdown("**Program output, in order**")
     st.code("\n".join(f"t={t:>2}  {line}" for t, line in output), language="text")
@@ -1242,12 +1244,12 @@ void *calculator(void *arg) {             // T2
     return NULL;
 }
 
-int main(void) {                          // main thread
+int main(void) {                          // main thread (T0): the "parent"
     pthread_t t1, t2;
-    pthread_create(&t1, NULL, reader, NULL);
-    pthread_create(&t2, NULL, calculator, NULL);
-    pthread_join(t1, NULL);
-    pthread_join(t2, NULL);
+    pthread_create(&t1, NULL, reader, NULL);      // create child T1
+    pthread_create(&t2, NULL, calculator, NULL);  // create child T2
+    pthread_join(t1, NULL);                       // wait for T1 (like wait())
+    pthread_join(t2, NULL);                       // wait for T2
     return 0;
 }"""
 OS_THREAD_SCHED = """// Simplified OS scheduling logic
@@ -1292,25 +1294,40 @@ THREAD_SLIDES = [
         Previous week: a process can contain several threads. This week: the OS <b>schedules those threads</b>.
         <br>In process <b>P0</b>, <b>T1 (file reader)</b> is <b>BLOCKED</b> waiting for the disk, while
         <b>T2 (calculator)</b> is <b>RUNNING</b> on CPU core 0.
+        <br><br><b>main (T0)</b> is the process's first thread, the one that runs <code>main()</code>. Like a <i>parent</i>, it creates
+        its <i>children</i> T1 and T2 with <code>pthread_create()</code> and then waits for them in <code>pthread_join()</code> —
+        just as a parent process waits for its child with <code>wait()</code> after <code>fork()</code> (Week 3).
         <br><br><b>One process ≠ one execution flow · One blocked thread ≠ entire process blocked</b>
         """,
         "flow": "OS schedules runnable threads: CPU core 0 → T2 while T1 is BLOCKED",
         "layers": ["app", "os"],
-        "terms": ["Thread", "Blocking call", "pthread_join"],
+        "terms": ["Thread", "Main thread", "Blocking call", "pthread_join"],
         "code": (("app", "Application code · C (POSIX threads)", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED)),
         "board": ["V18_1"],
         "say": ["Geçen hafta bir process'in birden çok thread içerebileceğini gördük. Bu hafta OS'nin bu thread'leri nasıl zamanladığını görüyoruz.",
                 "T1 bloke, ama bu bütün uygulamanın durması demek değil: T2 çalışmaya devam edebilir.",
                 "sleep(3) gerçek dosya okuma değil; thread'in CPU kullanmadan beklemesini temsil ediyor. Gerçek I/O için read() kullanılabilir.",
-                "pthread_create() kullanıcı alanındaki kütüphane arayüzü; Linux'ta thread'i kernel mekanizmaları oluşturur."],
+                "pthread_create() kullanıcı alanındaki kütüphane arayüzü; Linux'ta thread'i kernel mekanizmaları oluşturur.",
+                "main (T0) process'in ilk thread'i. Week 3'teki ebeveyn-çocuk ilişkisini hatırlatın: ebeveyn fork() ile çocuk yaratıp wait() ile bekliyordu; burada main pthread_create() ile T1 ve T2'yi yaratıp pthread_join() ile bekliyor.",
+                "Teknik not: POSIX thread'leri eşittir, OS aralarında ebeveyn-çocuk hiyerarşisi tutmaz; herhangi bir thread başka bir thread'i join edebilir. 'Ebeveyn' process'lerden ödünç alınmış bir benzetme."],
         "say_en": ["Last week we learned that a process can contain multiple threads. This week we learn how the OS schedules those threads.",
                    "T1 is blocked, but that does not mean the entire application must stop: T2 can still run.",
                    "sleep(3) is not a real file read; it stands for a thread waiting without using the CPU. For real blocking I/O we could use read().",
-                   "pthread_create() is a user-space library interface; on Linux the thread is created by kernel mechanisms."],
-        "qa": [("Bu programda kaç process ve kaç thread var?",
-                "Bir process (P0) ve üç thread: main, T1 ve T2. İki worker thread'in (T1, T2) davranışını inceliyoruz; main ise pthread_join'de bekliyor.",
+                   "pthread_create() is a user-space library interface; on Linux the thread is created by kernel mechanisms.",
+                   "main (T0) is the process's first thread. Recall the parent-child relation from Week 3: the parent created a child with fork() and waited with wait(); here main creates T1 and T2 with pthread_create() and waits with pthread_join().",
+                   "Technical note: POSIX threads are peers; the OS keeps no parent-child hierarchy between them, and any thread can join another. 'Parent' is an analogy borrowed from processes."],
+        "qa": [("Çizelgedeki main nedir?",
+                "Process başlarken OS'nin oluşturduğu ilk thread (main thread, T0); main() fonksiyonunu çalıştırır. Bir ebeveyn gibi T1 ve T2'yi yaratır (zaman 0), sonra pthread_join ile onları bekler (JOIN, CPU kullanmaz) ve ikisi bitince return ile process'i sonlandırır (zaman 11).",
+                "What is main in the timeline?",
+                "The first thread the OS creates when the process starts (main thread, T0); it runs main(). Like a parent it creates T1 and T2 (time 0), then waits for them in pthread_join (JOIN, no CPU) and ends the process with return once both are done (time 11)."),
+               ("Thread'lerde de process'lerdeki gibi gerçek bir ebeveyn-çocuk ilişkisi var mı?",
+                "Hayır, bu bir benzetme. Process'lerde ebeveyn-çocuk ilişkisi OS tarafından tutulur (fork/wait). POSIX thread'leri eşittir: herhangi bir thread başka bir thread'i join edebilir. Ama main'in yaratıp beklemesi, fork() ve wait() ile aynı kalıbı izler.",
+                "Do threads have a real parent-child relation like processes?",
+                "No, it is an analogy. For processes the OS keeps the parent-child relation (fork/wait). POSIX threads are peers: any thread can join another. But main creating and then waiting follows the same pattern as fork() and wait()."),
+               ("Bu programda kaç process ve kaç thread var?",
+                "Bir process (P0) ve üç thread: main (T0), T1 ve T2. İki worker thread'in (T1, T2) davranışını inceliyoruz; main ise pthread_join'de bekliyor.",
                 "How many processes and threads does this program have?",
-                "One process (P0) and three threads: main, T1 and T2. We study the two worker threads (T1, T2); main waits in pthread_join."),
+                "One process (P0) and three threads: main (T0), T1 and T2. We study the two worker threads (T1, T2); main waits in pthread_join."),
                ("T1 uyurken CPU kullanır mı?",
                 "Hayır. sleep(3) sırasında T1 BLOCKED durumundadır ve runnable kümesinde değildir.",
                 "Does T1 consume CPU while sleeping?",
@@ -2436,7 +2453,7 @@ def main():
     with tabs[3]:
         st.header("Scenario 2a — Thread-level scheduling")
         st.markdown("**Goal:** show that one blocked thread does not block the other threads of the same process.")
-        render_terms(["Thread", "Blocking call", "pthread_join"])
+        render_terms(["Thread", "Main thread", "Blocking call", "pthread_join"])
         with st.expander("Application code (C, POSIX threads) and OS pseudocode"):
             code_pair(("app", "Application code", APP_THREAD_SCHED), ("os", "OS kernel · pseudocode", OS_THREAD_SCHED))
             st.code(RUN_THREAD_CMDS, language="bash")

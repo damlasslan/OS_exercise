@@ -492,6 +492,7 @@
   "img": "V18_1.jpg",
   "caps": [
    "Bir process, iki worker thread: T1 dosya okuyor, T2 hesap yapıyor. Main thread ikisini de bekliyor.",
+   "main (T0) process'in ilk thread'i: bir ebeveyn gibi T1 ve T2'yi yaratıyor, sonra pthread_join'de çocuklarını bekliyor; Week 3'teki fork() ve wait() gibi.",
    "OS çalıştırılabilir thread'leri zamanlar: T1 bloke iken çekirdek 0'da T2 çalışıyor.",
    "Tek çekirdekte zaman çizelgesi: T1 3 tık bloke; bu sırada T2 çalışıyor.",
    "T1 uyandığında doğrudan RUNNING olmuyor: önce READY, T2'nin dilimi bitince çalışıyor.",
@@ -500,6 +501,7 @@
   ],
   "caps_en": [
    "One process, two worker threads: T1 reads a file, T2 computes. The main thread waits for both.",
+   "main (T0) is the process's first thread: like a parent it creates T1 and T2, then waits for its children in pthread_join, like fork() and wait() in Week 3.",
    "The OS schedules runnable threads: while T1 is blocked, T2 runs on core 0.",
    "Timeline on one core: T1 is blocked for 3 ticks; meanwhile T2 runs.",
    "When T1 wakes it does not become RUNNING directly: first READY, then it runs when T2's slice ends.",
