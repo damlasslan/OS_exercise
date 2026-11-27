@@ -6,7 +6,7 @@ export const CASES = [
   {name:"Video Streaming Platform",tasks:["Video decoding","Buffer management","Network receiver","Cache writing"],file:"Video segment",goal:"Reduce playback interruptions"},
   {name:"Autonomous Farm Robot",tasks:["Camera processing","Navigation","Sensor reading","Data logging"],file:"Sensor log",goal:"Keep navigation responsive"}
 ];
-function rng(seed){let x=2166136261; for(const c of seed){x=Math.imul(x^c.charCodeAt(0),16777619)>>>0;} return n=>{x=(Math.imul(x,1664525)+1013904223)>>>0;return x%n;};}
+function rng(seed){let x=2166136261; for(const c of seed){x=Math.imul(x^c.charCodeAt(0),16777619)>>>0;} return n=>{x=(Math.imul(x,1664525)+1013904223)>>>0;return Math.floor(x/4294967296*n);};}
 export function workload(seed,caseNo){
  if(!Number.isInteger(caseNo)||caseNo<1||caseNo>5)throw Error("Invalid case");
  const r=rng(String(seed)+":"+caseNo),c=CASES[caseNo-1];

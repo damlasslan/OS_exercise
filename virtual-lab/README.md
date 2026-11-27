@@ -3,7 +3,7 @@
 Development deployment for synthetic accounts: [open the lab](https://br-withered-thunder-bgnp8v2a-oslab.compute.c-9.eu-central-1.aws.neon.tech/). Real enrollment remains closed pending institutional data-protection approval. See the [Student Homework Guide](student-guide.md) and [Instructor Guide](instructor-guide.md).
 
 ## Assignment
-Individual, English, 14 days from verified release. Five choices: Online Gaming, Smart Security Cameras, Hospital Monitoring, Video Streaming, Autonomous Farm Robot. One case per student; instructor may authorize a second independent attempt for missed quiz. Weight subject to official course assessment plan.
+Individual, English, 14 days from verified release. Five choices: Online Gaming, Smart Security Cameras, Hospital Monitoring, Video Streaming, Autonomous Farm Robot. Students may open any or all of the five cases; each case is a separate attempt that is saved, resumed, submitted and graded on its own. Weight subject to official course assessment plan.
 
 ## Workflow
 1. Verified login and case selection.
@@ -27,3 +27,9 @@ Architecture 10; process/thread 10; scheduling 15; synchronization/deadlock 15; 
 - Verify scheduling and replacement results against independent reference examples.
 - Verify the Neon Function application URL and browser operation.
 - Publish student guide and instructor guide only after tests pass.
+
+## Tests
+- Unit: `node --test virtual-lab/engine.test.mjs virtual-lab/drafts.test.mjs` (simulation references, workload variety, draft merging).
+- Browser: `node virtual-lab/browser.test.cjs` with `LAB_URL`, `CHROME_PATH`, `LAB_TEST_EMAIL`, `LAB_TEST_PASSWORD` (needs `playwright-core`).
+- Live API: `node virtual-lab/live.test.mjs` with `LAB_URL` and `LAB_TEST_ACCOUNTS` (five synthetic students, then one instructor).
+- Deploy `drafts.mjs` together with `app.mjs`; the page imports it.

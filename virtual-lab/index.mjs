@@ -2,9 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {workload,scheduling,synchronization,replacement,allocation} from './engine.mjs';
 
-const files=new Map([['/','index.html'],['/app.mjs','app.mjs'],['/practice','preview.html'],['/engine.mjs','engine.mjs']]);
+const files=new Map([['/','index.html'],['/app.mjs','app.mjs'],['/practice','preview.html'],['/engine.mjs','engine.mjs'],['/drafts.mjs','drafts.mjs']]);
 const json=(value,status=200,headers={})=>Response.json(value,{status,headers:{'Cache-Control':'no-store',...headers}});
-function fail(status,message){throw Object.assign(new Error(message),{status});}
+function fail(status,message,details={}){throw Object.assign(new Error(message),{status,details});}
 const domain='@example.invalid';
 async function query(query,params=[]){
   const connection=new URL(process.env.DATABASE_URL);
@@ -18,7 +18,8 @@ async function identity(req){
   if(!token)fail(401,'Please sign in.');
   const [person]=await query(`select u.id,lab.verified_student(u.id) as student,exists(select from lab.instructors i where i.auth_id=u.id::text) as instructor
   from neon_auth.session s join neon_auth."user" u on u.id=s."userId" where s.token=$1 and s."expiresAt">now() and u."emailVerified" and not coalesce(u.banned,false) and right(lower(u.email),16)='@example.invalid'`,[token]);
-  if(!person||(!person.student&&!person.instructor))fail(403,'A verified synthetic roster or instructor account is required.');
+  if(!person)fail(401,'Your session has expired. Please sign in again.');
+  if(!person.student&&!person.instructor)fail(403,'A verified synthetic roster or instructor account is required.');
   return person;
 }
 function experiment(w,key){
@@ -51,6 +52,8 @@ async function api(req,route){
   if(route==='home')return json({student:p.student,instructor:p.instructor,attempts:await query('select id,case_no,attempt_no,submitted_at from lab.attempts where student_id=$1 order by attempt_no',[p.student])});
   if(route==='start'){
     if(!p.student||!Number.isInteger(b.caseNo)||b.caseNo<1||b.caseNo>5)fail(400,'Choose a case.');
+    const [existing]=await query(`select id from lab.attempts where student_id=$1 and case_no=$2 and assignment_id=(select id from lab.assignments where title='Synthetic OS Lab' and now() between opens_at and closes_at order by opens_at desc limit 1)`,[p.student,b.caseNo]);
+    if(existing)return json({id:existing.id,resumed:true});
     const id=randomUUID();const rows=await query(`insert into lab.attempts(id,assignment_id,student_id,attempt_no,case_no,workload)
     select $1,s.id,$2,1+(select count(*) from lab.attempts a where a.student_id=$2 and a.assignment_id=s.id),$3,$4::jsonb from lab.assignments s where title='Synthetic OS Lab' and now() between opens_at and closes_at order by opens_at desc limit 1 returning id`,[id,p.student,b.caseNo,JSON.stringify(workload(id,b.caseNo))]);
     if(!rows.length)fail(409,'No open synthetic assignment.');return json(rows[0]);
@@ -62,10 +65,9 @@ async function api(req,route){
   const [a]=await query(`select a.* from lab.attempts a join lab.roster r using(student_id) where a.id=$1 and (a.student_id=$2 or $3::boolean) and right(lower(r.email),16)='@example.invalid'`,[b.id,p.student,p.instructor===true]);
   if(!a)fail(404,'Attempt unavailable.');
   if(route==='read')return json({attempt:a,predictions:await query('select experiment,answers from lab.predictions where attempt_id=$1',[a.id]),runs:await query('select experiment,results from lab.experiment_runs where attempt_id=$1 order by id',[a.id]),evidence:await query("select kind,encode(png,'base64') as image from lab.evidence where attempt_id=$1",[a.id]),grade:(await query('select auto_score,manual_score,feedback from lab.grades where attempt_id=$1',[a.id]))[0]});
-  if(route==='reopen'||route==='second'){
+  if(route==='reopen'){
     if(!p.instructor)fail(403,'Instructor access required.');
-    if(route==='reopen'){const [r]=await query('select lab.reopen_synthetic($1,$2) as ok',[p.id,a.id]);if(!r.ok)fail(409,'Attempt could not be reopened.');}
-    else await query('update lab.roster set allowed_attempts=2 where student_id=$1',[a.student_id]);
+    const [r]=await query('select lab.reopen_synthetic($1,$2) as ok',[p.id,a.id]);if(!r.ok)fail(409,'Attempt could not be reopened.');
     return json({ok:true});
   }
   if(route==='grade'){
@@ -82,7 +84,7 @@ async function api(req,route){
   }
   if(route==='save'){
     const [row]=await query('select lab.save_draft($1,$2,$3,$4::jsonb) as version',[p.id,a.id,b.version,JSON.stringify(b.draft)]);
-    if(row.version==null)fail(409,'Draft conflict. Download your local copy before reloading.');return json(row);
+    if(row.version==null)fail(409,'Draft conflict: another device or tab saved a newer draft.',{conflict:true});return json(row);
   }
   if(route==='run'){
     const answer=experiment(a.workload,b.key);
@@ -114,5 +116,5 @@ export default {async fetch(req){
     if(pathname.startsWith('/api/'))return await api(req,pathname.slice(5));
     if(!files.has(pathname))return new Response('Not found',{status:404});
     const name=files.get(pathname);return new Response(await readFile(new URL(name,import.meta.url)),{headers:{'Content-Type':name.endsWith('.html')?'text/html; charset=utf-8':'text/javascript','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
-  }catch(e){return json({error:e.status?e.message:'Service unavailable.'},e.status||503);}
+  }catch(e){return json({error:e.status?e.message:'Service unavailable.',...(e.status?e.details:{})},e.status||503);}
 }};

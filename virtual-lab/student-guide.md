@@ -2,7 +2,7 @@
 
 Institutional enrollment is closed. Use a synthetic account issued for the development lab. The practice link requires only a fictional code and saves to this browser.
 
-1. Sign in, choose one of the five systems, and start your attempt. Reopen an existing attempt from Assignments on another device.
+1. Sign in and open any of the five systems. You may work on several systems; each is saved separately and opens where you left off, also on another device.
 2. Draw the system as components connected by arrows. Label data, threads, shared resources and ownership. Export the diagram as PNG under 1.2 MB. Upload it under Architecture diagram.
 3. Read your personal arrivals, bursts and quantum. Trace Round Robin with a ready queue. Admit new arrivals before requeuing the running process. Waiting time equals completion minus arrival minus burst. Enter the average across all processes.
 4. For the counter, write down each process's read, add and write. Predict the final value before running. Compare it with the mutex trace. Explain circular wait if two processes acquire two locks in opposite orders.
