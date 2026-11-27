@@ -101,10 +101,10 @@ async function api(req,route){
     const score=predictions.reduce((sum,row)=>sum+(Math.abs(row.answers.value-experiment(a.workload,row.experiment))<0.005?weights[row.experiment]:0),0);
     const rows=await query(`with done as (update lab.attempts set version=version+1,submitted_at=now() where id=$1 and version=$2 and submitted_at is null
     and length(trim(draft->>'architecture'))>0 and length(trim(draft->>'evaluation'))>0 and length(trim(draft->>'processes'))>0
-    and (select count(*) from lab.evidence where attempt_id=$1)=3 and (select count(distinct experiment) from lab.experiment_runs where attempt_id=$1)=4 returning *),
+    and length(trim(draft->>'cpuCorrection'))>0 and length(trim(draft->>'vmCorrection'))>0 and length(trim(draft->>'fsCorrection'))>0 and length(trim(draft->>'syncCorrection'))>0 and (select count(*) from lab.evidence where attempt_id=$1)=3 and (select count(distinct experiment) from lab.experiment_runs where attempt_id=$1)=4 returning *),
     report as (insert into lab.reports(attempt_id,version,snapshot,final) select id,version,to_jsonb(done)||jsonb_build_object('predictions',(select jsonb_object_agg(experiment,answers) from lab.predictions where attempt_id=$1),'runs',(select jsonb_agg(results order by id) from lab.experiment_runs where attempt_id=$1),'evidence',(select jsonb_object_agg(kind,encode(png,'base64')) from lab.evidence where attempt_id=$1)),true from done)
     insert into lab.grades(attempt_id,auto_score) select id,$3 from done on conflict(attempt_id) do update set auto_score=excluded.auto_score,manual_score=null,feedback=null,updated_at=now() returning auto_score`,[a.id,b.version,score]);
-    if(!rows.length)fail(409,'Complete the four experiments and written sections, then sync your latest changes.');return json(rows[0]);
+    if(!rows.length)fail(409,'Complete all four experiments, corrections, written sections and three image uploads. Sync your draft before submitting.');return json(rows[0]);
   }
   fail(404,'Unknown action.');
 }
