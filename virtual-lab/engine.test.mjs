@@ -35,3 +35,24 @@ test('file locking makes the writer wait until the reader finishes',()=>{
   assert.match(fileLocking(true)[1],/Writer waits/);
   assert.match(fileLocking(true).at(-1),/exclusive lock/);
 });
+
+test('workloads differ between students for every exercise', () => {
+  const seen = { sync: new Set(), answers: new Set(), cpu: new Set(), pages: new Set(), file: new Set() };
+  for (let s = 0; s < 1000; s++) {
+    const w = workload('variety-' + s, 1 + (s % 5));
+    seen.sync.add(JSON.stringify(w.sync));
+    seen.answers.add(synchronization(w.sync, false).counter);
+    seen.cpu.add(JSON.stringify(w.processes.map(p => [p.arrival, p.burst])) + w.quantum);
+    seen.pages.add(w.pages.join(','));
+    seen.file.add(w.fileKiB);
+  }
+  assert.ok(seen.sync.size >= 40, 'synchronization setups: ' + seen.sync.size);
+  assert.ok(seen.answers.size >= 6, 'synchronization answers: ' + seen.answers.size);
+  assert.ok(seen.cpu.size >= 900 && seen.pages.size >= 990 && seen.file.size >= 40);
+});
+
+test('every value of a small range is generated with a similar frequency', () => {
+  const counts = [0, 0, 0, 0];
+  for (let s = 0; s < 4000; s++) counts[workload('uniform-' + s, 1).sync.initial]++;
+  assert.ok(counts.every(c => c > 800 && c < 1200), counts.join(','));
+});

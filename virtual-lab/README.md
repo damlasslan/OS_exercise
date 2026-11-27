@@ -27,3 +27,9 @@ Architecture 10; process/thread 10; scheduling 15; synchronization/deadlock 15; 
 - Verify scheduling and replacement results against independent reference examples.
 - Verify the Neon Function application URL and browser operation.
 - Publish student guide and instructor guide only after tests pass.
+
+## Tests
+- Unit: `node --test virtual-lab/engine.test.mjs virtual-lab/drafts.test.mjs` (simulation references, workload variety, draft merging).
+- Browser: `node virtual-lab/browser.test.cjs` with `LAB_URL`, `CHROME_PATH`, `LAB_TEST_EMAIL`, `LAB_TEST_PASSWORD` (needs `playwright-core`).
+- Live API: `node virtual-lab/live.test.mjs` with `LAB_URL` and `LAB_TEST_ACCOUNTS` (five synthetic students, then one instructor).
+- Deploy `drafts.mjs` together with `app.mjs`; the page imports it.

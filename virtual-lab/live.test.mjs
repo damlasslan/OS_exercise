@@ -30,5 +30,5 @@ for(let i=0;i<5;i++){
  const final=await check('read',{id},c);assert.equal(Number(final.grade.manual_score),31);assert.equal(final.evidence.length,3);
  console.log('PASS case',i+1);
 }
-await check('dashboard',{},sessions[5]);await check('logout',{},sessions[0]);await check('home',{},sessions[0],403);
+await check('dashboard',{},sessions[5]);await check('logout',{},sessions[0]);await check('home',{},sessions[0],401);
 console.log('PASS instructor dashboard, session invalidation and access checks');

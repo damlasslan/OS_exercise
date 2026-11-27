@@ -2,9 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {workload,scheduling,synchronization,replacement,allocation} from './engine.mjs';
 
-const files=new Map([['/','index.html'],['/app.mjs','app.mjs'],['/practice','preview.html'],['/engine.mjs','engine.mjs']]);
+const files=new Map([['/','index.html'],['/app.mjs','app.mjs'],['/practice','preview.html'],['/engine.mjs','engine.mjs'],['/drafts.mjs','drafts.mjs']]);
 const json=(value,status=200,headers={})=>Response.json(value,{status,headers:{'Cache-Control':'no-store',...headers}});
-function fail(status,message){throw Object.assign(new Error(message),{status});}
+function fail(status,message,details={}){throw Object.assign(new Error(message),{status,details});}
 const domain='@example.invalid';
 async function query(query,params=[]){
   const connection=new URL(process.env.DATABASE_URL);
@@ -18,7 +18,8 @@ async function identity(req){
   if(!token)fail(401,'Please sign in.');
   const [person]=await query(`select u.id,lab.verified_student(u.id) as student,exists(select from lab.instructors i where i.auth_id=u.id::text) as instructor
   from neon_auth.session s join neon_auth."user" u on u.id=s."userId" where s.token=$1 and s."expiresAt">now() and u."emailVerified" and not coalesce(u.banned,false) and right(lower(u.email),16)='@example.invalid'`,[token]);
-  if(!person||(!person.student&&!person.instructor))fail(403,'A verified synthetic roster or instructor account is required.');
+  if(!person)fail(401,'Your session has expired. Please sign in again.');
+  if(!person.student&&!person.instructor)fail(403,'A verified synthetic roster or instructor account is required.');
   return person;
 }
 function experiment(w,key){
@@ -82,7 +83,7 @@ async function api(req,route){
   }
   if(route==='save'){
     const [row]=await query('select lab.save_draft($1,$2,$3,$4::jsonb) as version',[p.id,a.id,b.version,JSON.stringify(b.draft)]);
-    if(row.version==null)fail(409,'Draft conflict. Download your local copy before reloading.');return json(row);
+    if(row.version==null)fail(409,'Draft conflict: another device or tab saved a newer draft.',{conflict:true});return json(row);
   }
   if(route==='run'){
     const answer=experiment(a.workload,b.key);
@@ -114,5 +115,5 @@ export default {async fetch(req){
     if(pathname.startsWith('/api/'))return await api(req,pathname.slice(5));
     if(!files.has(pathname))return new Response('Not found',{status:404});
     const name=files.get(pathname);return new Response(await readFile(new URL(name,import.meta.url)),{headers:{'Content-Type':name.endsWith('.html')?'text/html; charset=utf-8':'text/javascript','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
-  }catch(e){return json({error:e.status?e.message:'Service unavailable.'},e.status||503);}
+  }catch(e){return json({error:e.status?e.message:'Service unavailable.',...(e.status?e.details:{})},e.status||503);}
 }};
