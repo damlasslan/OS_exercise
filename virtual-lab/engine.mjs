@@ -10,7 +10,9 @@ function rng(seed){let x=2166136261; for(const c of seed){x=Math.imul(x^c.charCo
 export function workload(seed,caseNo){
  if(!Number.isInteger(caseNo)||caseNo<1||caseNo>5)throw Error("Invalid case");
  const r=rng(String(seed)+":"+caseNo),c=CASES[caseNo-1];
- return {caseNo,quantum:2+r(3),processes:c.tasks.map((task,i)=>({id:"P"+(i+1),task,arrival:i===0?0:i+r(3),burst:3+r(7),priority:i+1})),pages:Array.from({length:14},()=>r(7)),frames:3,blockKiB:4,fileKiB:17+r(48),freeBlocks:[2,3,4,7,8,11,12,13,14,18,19,22,23,24,25,26,28,30,31,33]};
+ const syncRandom = rng(String(seed) + ':sync:' + caseNo);
+ const sync = { initial: syncRandom(4), increments: { P1: 1 + syncRandom(4), P2: 2 + syncRandom(4) } };
+ return {caseNo,sync,quantum:2+r(3),processes:c.tasks.map((task,i)=>({id:"P"+(i+1),task,arrival:i===0?0:i+r(3),burst:3+r(7),priority:i+1})),pages:Array.from({length:14},()=>r(7)),frames:3,blockKiB:4,fileKiB:17+r(48),freeBlocks:[2,3,4,7,8,11,12,13,14,18,19,22,23,24,25,26,28,30,31,33]};
 }
 export function scheduling(processes,algorithm,quantum=2){
  if(!["FCFS","RR","PRIORITY"].includes(algorithm)||!Number.isInteger(quantum)||quantum<1)throw Error("Invalid scheduler");
@@ -44,4 +46,39 @@ export function allocation(fileKiB,blockKiB,freeBlocks){
  const free=[...new Set(freeBlocks)].sort((a,b)=>a-b),blocks=Math.ceil(fileKiB/blockKiB);
  let contiguous=null;for(let i=0;i+blocks<=free.length;i++){if(free[i+blocks-1]-free[i]===blocks-1){contiguous=free.slice(i,i+blocks);break;}}
  return {blocks,internalWasteKiB:blocks*blockKiB-fileKiB,contiguous,linked:free.length>=blocks?free.slice(0,blocks):null,indexed:free.length>=blocks+1?{index:free[0],data:free.slice(1,blocks+1)}:null};
+}
+
+export function synchronization({ initial, increments }, useMutex, reverseOrder = false) {
+  const [first, second] = reverseOrder ? ['P2', 'P1'] : ['P1', 'P2'];
+  let counter = initial;
+  const steps = [];
+  const read = task => {
+    steps.push({ task, action: 'Read', counter });
+    return counter;
+  };
+  const write = (task, value) => {
+    counter = value + increments[task];
+    steps.push({ task, action: 'Write', counter });
+  };
+  const firstValue = read(first);
+  if (useMutex) {
+    write(first, firstValue);
+    write(second, read(second));
+  } else {
+    const secondValue = read(second);
+    write(first, firstValue);
+    write(second, secondValue);
+  }
+  return { counter, steps };
+}
+
+export function fileLocking(useLock) {
+  return useLock
+    ? ['Reader acquires a shared lock and reads the first block.',
+       'Writer waits for the reader to release its lock.',
+       'Reader reads the second block and releases its lock.',
+       'Writer acquires an exclusive lock and updates both blocks.']
+    : ['Reader reads the original first block.',
+       'Writer updates both blocks.',
+       'Reader reads the updated second block and sees a mixed version.'];
 }

@@ -15,3 +15,23 @@ test('Clock pointer and bits',()=>{const r=replacement([1,2,3,1,4],3,'CLOCK');as
 test('allocation overhead',()=>{const r=allocation(9,4,[1,2,3,8]);assert.equal(r.blocks,3);assert.equal(r.internalWasteKiB,3);assert.deepEqual(r.contiguous,[1,2,3]);assert.deepEqual(r.indexed,{index:1,data:[2,3,8]});});
 test('fragmented free blocks',()=>{assert.equal(allocation(12,4,[1,3,5,7]).contiguous,null);});
 test('all cases invariants',()=>{for(let c=1;c<=5;c++){const w=workload('student-test',c);for(const a of ['FCFS','RR','PRIORITY']){const s=scheduling(w.processes,a,w.quantum);assert.equal(s.metrics.length,4);assert.ok(s.metrics.every(m=>m.waiting>=0));}for(const a of ['FIFO','LRU','OPT','CLOCK']){const r=replacement(w.pages,w.frames,a);assert.equal(r.faults+r.hits,w.pages.length);assert.ok(r.steps.every(s=>s.frames.length===w.frames));}}});
+
+import {synchronization,fileLocking} from './engine.mjs';
+test('mutex prevents lost updates for every case and either order',()=>{
+  for(let c=1;c<=5;c++){
+    const {sync}=workload('synthetic-mutex',c);
+    for(const reverse of [false,true]){
+      const last=reverse?'P1':'P2';
+      const unlocked=synchronization(sync,false,reverse);
+      const locked=synchronization(sync,true,reverse);
+      assert.deepEqual(unlocked.steps.map(s=>s.action),['Read','Read','Write','Write']);
+      assert.equal(unlocked.counter,sync.initial+sync.increments[last]);
+      assert.equal(locked.counter,sync.initial+sync.increments.P1+sync.increments.P2);
+    }
+  }
+});
+test('file locking makes the writer wait until the reader finishes',()=>{
+  assert.match(fileLocking(false).at(-1),/mixed version/);
+  assert.match(fileLocking(true)[1],/Writer waits/);
+  assert.match(fileLocking(true).at(-1),/exclusive lock/);
+});
