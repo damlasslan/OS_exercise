@@ -10,7 +10,8 @@ assert.equal((await call('home',{},sessions[0],'https://example.invalid')).statu
 await check('dashboard',{},sessions[0],403);
 for(let i=0;i<5;i++){
  const c=sessions[i],home=await check('home',{},c);
- const id=home.attempts[0]?.id||(await check('start',{caseNo:i+1},c)).id;
+ const id=home.attempts.find(x=>x.case_no===i+1)?.id||(await check('start',{caseNo:i+1},c)).id;
+ assert.equal((await check('start',{caseNo:i+1},c)).id,id,'opening the same case again must resume it');
  await check('read',{id},sessions[(i+1)%5],404);
  await check('save',{id,version:0,draft:{}},sessions[(i+1)%5],404);
  let d=await check('read',{id},c);
@@ -30,5 +31,7 @@ for(let i=0;i<5;i++){
  const final=await check('read',{id},c);assert.equal(Number(final.grade.manual_score),31);assert.equal(final.evidence.length,3);
  console.log('PASS case',i+1);
 }
+const other=(await check('start',{caseNo:5},sessions[0])).id;assert.notEqual(other,(await check('home',{},sessions[0])).attempts.find(x=>x.case_no===1).id);assert.equal((await check('start',{caseNo:5},sessions[0])).id,other);
+console.log('PASS several cases per student, each resumed separately');
 await check('dashboard',{},sessions[5]);await check('logout',{},sessions[0]);await check('home',{},sessions[0],401);
 console.log('PASS instructor dashboard, session invalidation and access checks');

@@ -3,7 +3,7 @@
 Development deployment for synthetic accounts: [open the lab](https://br-withered-thunder-bgnp8v2a-oslab.compute.c-9.eu-central-1.aws.neon.tech/). Real enrollment remains closed pending institutional data-protection approval. See the [Student Homework Guide](student-guide.md) and [Instructor Guide](instructor-guide.md).
 
 ## Assignment
-Individual, English, 14 days from verified release. Five choices: Online Gaming, Smart Security Cameras, Hospital Monitoring, Video Streaming, Autonomous Farm Robot. One case per student; instructor may authorize a second independent attempt for missed quiz. Weight subject to official course assessment plan.
+Individual, English, 14 days from verified release. Five choices: Online Gaming, Smart Security Cameras, Hospital Monitoring, Video Streaming, Autonomous Farm Robot. Students may open any or all of the five cases; each case is a separate attempt that is saved, resumed, submitted and graded on its own. Weight subject to official course assessment plan.
 
 ## Workflow
 1. Verified login and case selection.

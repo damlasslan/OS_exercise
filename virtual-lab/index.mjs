@@ -52,6 +52,8 @@ async function api(req,route){
   if(route==='home')return json({student:p.student,instructor:p.instructor,attempts:await query('select id,case_no,attempt_no,submitted_at from lab.attempts where student_id=$1 order by attempt_no',[p.student])});
   if(route==='start'){
     if(!p.student||!Number.isInteger(b.caseNo)||b.caseNo<1||b.caseNo>5)fail(400,'Choose a case.');
+    const [existing]=await query(`select id from lab.attempts where student_id=$1 and case_no=$2 and assignment_id=(select id from lab.assignments where title='Synthetic OS Lab' and now() between opens_at and closes_at order by opens_at desc limit 1)`,[p.student,b.caseNo]);
+    if(existing)return json({id:existing.id,resumed:true});
     const id=randomUUID();const rows=await query(`insert into lab.attempts(id,assignment_id,student_id,attempt_no,case_no,workload)
     select $1,s.id,$2,1+(select count(*) from lab.attempts a where a.student_id=$2 and a.assignment_id=s.id),$3,$4::jsonb from lab.assignments s where title='Synthetic OS Lab' and now() between opens_at and closes_at order by opens_at desc limit 1 returning id`,[id,p.student,b.caseNo,JSON.stringify(workload(id,b.caseNo))]);
     if(!rows.length)fail(409,'No open synthetic assignment.');return json(rows[0]);
@@ -63,10 +65,9 @@ async function api(req,route){
   const [a]=await query(`select a.* from lab.attempts a join lab.roster r using(student_id) where a.id=$1 and (a.student_id=$2 or $3::boolean) and right(lower(r.email),16)='@example.invalid'`,[b.id,p.student,p.instructor===true]);
   if(!a)fail(404,'Attempt unavailable.');
   if(route==='read')return json({attempt:a,predictions:await query('select experiment,answers from lab.predictions where attempt_id=$1',[a.id]),runs:await query('select experiment,results from lab.experiment_runs where attempt_id=$1 order by id',[a.id]),evidence:await query("select kind,encode(png,'base64') as image from lab.evidence where attempt_id=$1",[a.id]),grade:(await query('select auto_score,manual_score,feedback from lab.grades where attempt_id=$1',[a.id]))[0]});
-  if(route==='reopen'||route==='second'){
+  if(route==='reopen'){
     if(!p.instructor)fail(403,'Instructor access required.');
-    if(route==='reopen'){const [r]=await query('select lab.reopen_synthetic($1,$2) as ok',[p.id,a.id]);if(!r.ok)fail(409,'Attempt could not be reopened.');}
-    else await query('update lab.roster set allowed_attempts=2 where student_id=$1',[a.student_id]);
+    const [r]=await query('select lab.reopen_synthetic($1,$2) as ok',[p.id,a.id]);if(!r.ok)fail(409,'Attempt could not be reopened.');
     return json({ok:true});
   }
   if(route==='grade'){
