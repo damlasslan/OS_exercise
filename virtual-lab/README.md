@@ -28,6 +28,13 @@ Architecture 10; process/thread 10; scheduling 15; synchronization/deadlock 15; 
 - Verify the Neon Function application URL and browser operation.
 - Publish student guide and instructor guide only after tests pass.
 
+## Homework without accounts (/homework) — deployed
+The page `homework.html` (served at `/` and `/homework`) runs entirely in the student's browser: no login and nothing stored on the server.
+Students enter their student number, choose one of the five systems, and work is saved automatically per student number and system, so they continue where they left off on the same computer; a progress file moves the work to another computer.
+Numbers are generated from the student number with `engine.mjs`, so every student gets different values and the instructor can regenerate them. Initial predictions are locked in the browser before the simulation is shown. Students save the report as PDF and upload it to UBIS.
+The due date is set in `homework.html` (`DUE`, `DUE_TEXT`). Since 2026-11-28 the Neon function `oslab` runs only this homework: its ZIP holds `homework-index.mjs` (as `index.mjs`), `engine.mjs` and `homework.html`. The account-based lab described above stays in the repository but is not deployed.
+End-to-end test: `node virtual-lab/homework.test.cjs` with `LAB_URL` (site root ending in `/`) and `CHROME_PATH`.
+
 ## Tests
 - Unit: `node --test virtual-lab/engine.test.mjs virtual-lab/drafts.test.mjs` (simulation references, workload variety, draft merging).
 - Browser: `node virtual-lab/browser.test.cjs` with `LAB_URL`, `CHROME_PATH`, `LAB_TEST_EMAIL`, `LAB_TEST_PASSWORD` (needs `playwright-core`).
