@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {workload,scheduling,synchronization,replacement,allocation} from './engine.mjs';
 
-const files=new Map([['/','index.html'],['/app.mjs','app.mjs'],['/practice','preview.html'],['/engine.mjs','engine.mjs'],['/drafts.mjs','drafts.mjs']]);
+const files=new Map([['/','index.html'],['/app.mjs','app.mjs'],['/practice','preview.html'],['/homework','homework.html'],['/engine.mjs','engine.mjs'],['/drafts.mjs','drafts.mjs']]);
 const json=(value,status=200,headers={})=>Response.json(value,{status,headers:{'Cache-Control':'no-store',...headers}});
 function fail(status,message,details={}){throw Object.assign(new Error(message),{status,details});}
 const domain='@example.invalid';

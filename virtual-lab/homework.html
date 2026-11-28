@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Operating Systems Homework · Virtual Lab</title>
+<style>
+*{box-sizing:border-box}
+body{font:16px/1.6 system-ui,sans-serif;background:#f4f7fa;color:#18283e;margin:0}
+header{background:#142b49;color:#fff;padding:20px 16px}
+header h1{margin:0 0 4px;font-size:1.5rem}header p{margin:0}
+main{max-width:960px;margin:auto;padding:16px}
+section{background:#fff;border:1px solid #dce4ed;border-radius:12px;padding:20px;margin:16px 0}
+h2{margin-top:0}h1,h2,h3{line-height:1.25}
+label{display:block;font-weight:600;margin:14px 0 4px}
+input,textarea,select,button{font:inherit;padding:10px;border:1px solid #a9bacd;border-radius:6px;max-width:100%}
+input[type=text],input[type=number],select{width:100%;max-width:420px}
+textarea{width:100%;min-height:110px}
+button,.filebtn{background:#173e69;color:#fff;cursor:pointer;margin:6px 8px 6px 0;border:0;display:inline-block;padding:10px 14px;border-radius:6px;font-weight:600}
+button.secondary,.filebtn{background:#e8eef5;color:#173e69;border:1px solid #a9bacd}
+button:disabled{opacity:.5;cursor:default}
+.filebtn input{display:none}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}
+th,td{padding:6px 8px;border:1px solid #dce4ed;text-align:left}
+.scroll{overflow-x:auto}
+.notice{border-left:4px solid #b7791f;background:#fff5dc;padding:12px;border-radius:4px}
+.good{border-left:4px solid #2f855a;background:#e8f6ee;padding:12px;border-radius:4px}
+.muted{color:#53657a;font-size:.95rem}
+.locked{background:#eef3f8;border-radius:6px;padding:10px 12px}
+.sim{border-top:1px dashed #a9bacd;margin-top:14px;padding-top:6px}
+.checklist li{list-style:none;margin:4px 0}.checklist{padding-left:0}
+.ok::before{content:"✔ ";color:#2f855a;font-weight:700}.todo::before{content:"✘ ";color:#c53030;font-weight:700}
+img.evidence{max-width:100%;max-height:520px;border:1px solid #dce4ed;border-radius:6px;display:block;margin:8px 0}
+#status{position:sticky;bottom:0;background:#fff2cd;padding:10px 16px;text-align:center;margin:0}
+.printed,.printonly{display:none}
+@media print{
+  header,#status,.screen,button,.filebtn,input,select,textarea,.noprint{display:none!important}
+  body,section{background:#fff;border:0}section{padding:0;margin:0 0 14px;break-inside:auto}
+  main{max-width:none;padding:0}
+  .printed{display:block;white-space:pre-wrap;border:1px solid #dce4ed;padding:6px 8px;border-radius:4px;min-height:1.6em}
+  .printonly{display:block}
+  details{display:block}details>summary{display:none}
+  table{font-size:11px}img.evidence{max-height:380px;break-inside:avoid}
+  h2{break-after:avoid}
+}
+</style></head>
+<body>
+<header><h1>Operating Systems — Virtual Lab Homework</h1><p>Due <strong id="due"></strong> · Upload your PDF report to UBIS · Individual work, written in English</p></header>
+<main>
+<div id="reportHead" class="printonly"></div>
+
+<section id="startSec" class="screen">
+  <h2>Start or continue</h2>
+  <p class="notice"><strong>Your work is saved only in this browser on this computer.</strong> Nothing is sent to a server. Use <strong>Download progress file</strong> regularly as a backup and to continue on another computer.</p>
+  <label for="sid">Student number</label>
+  <input id="sid" type="text" placeholder="e.g. B2405.010133" autocomplete="off" spellcheck="false">
+  <label for="sname">Name and surname (printed on your report)</label>
+  <input id="sname" type="text" autocomplete="name">
+  <div id="saved"></div>
+  <label for="case">Choose one system</label>
+  <select id="case"></select>
+  <p class="muted">You will submit one system. You may look at other systems, and each one keeps its own saved work.</p>
+  <button id="open">Start / continue</button>
+  <label class="filebtn">Load progress file<input type="file" id="importFile" accept=".json,application/json"></label>
+  <p id="startMsg" role="alert"></p>
+</section>
+
+<div id="workspace" hidden>
+  <section>
+    <h2 id="caseTitle"></h2>
+    <p id="goal"></p>
+    <p class="muted">The numbers in this homework are generated from your student number, so they are different for every student.</p>
+    <label for="wsName" class="noprint">Name and surname (printed on your report)</label>
+    <input id="wsName" type="text" autocomplete="name" class="noprint">
+    <div class="noprint">
+      <button id="download">Download progress file</button>
+      <button id="switch" class="secondary">Change student number or system</button>
+    </div>
+  </section>
+  <div id="tasks"></div>
+  <section id="submitSec">
+    <h2>8. Check and submit</h2>
+    <p class="noprint">Complete every item, then choose <strong>Save report as PDF</strong> and select <em>Save as PDF</em> as the printer. Upload that PDF to UBIS before the deadline.</p>
+    <ul id="checklist" class="checklist"></ul>
+    <button id="print">Save report as PDF</button>
+  </section>
+</div>
+</main>
+<p id="status" role="status">Enter your student number to begin.</p>
+
+<script type="module">
+import {CASES,workload,scheduling,replacement,allocation,synchronization,fileLocking} from './engine.mjs';
+
+const DUE_TEXT = '9 December 2026, 23:59 (Istanbul time)';
+const DUE = new Date('2026-12-09T23:59:00+03:00');
+const PREFIX = 'oslab-homework-2026:';
+const FORMAT = 'oslab-homework';
+
+const $ = id => document.getElementById(id);
+const add = (parent, tag, text) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; parent.append(e); return e; };
+const norm = s => s.trim().toUpperCase().replace(/\s+/g, '');
+const validId = s => /^[A-Z]{1,2}\d{4}\.\d{5,6}$/.test(s);
+const stamp = iso => new Date(iso).toLocaleString('en-GB', {dateStyle: 'medium', timeStyle: 'short'});
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { localStorage.setItem(k, v); },
+  keys() { try { return Array.from({length: localStorage.length}, (_, i) => localStorage.key(i)); } catch { return []; } }
+};
+
+$('due').textContent = DUE_TEXT;
+CASES.forEach((c, i) => { const o = add($('case'), 'option', c.name); o.value = i + 1; });
+try { const last = JSON.parse(store.get(PREFIX + 'last') || 'null'); if (last) { $('sid').value = last.sid; $('sname').value = last.name || ''; } } catch {}
+
+let state = null, w = null, key = null;
+
+const EXPERIMENTS = {
+  cpu: {title: 'Round Robin: average waiting time (ms)', unit: 'ms'},
+  sync: {title: 'Final counter when both processes read before either writes and P2 writes last', unit: ''},
+  vm: {title: 'LRU: number of page faults', unit: 'faults'},
+  fs: {title: 'Number of data blocks needed for the file', unit: 'blocks'}
+};
+const correct = {
+  cpu: () => scheduling(w.processes, 'RR', w.quantum).averageWaiting,
+  sync: () => synchronization(w.sync, false).counter,
+  vm: () => replacement(w.pages, w.frames, 'LRU').faults,
+  fs: () => allocation(w.fileKiB, w.blockKiB, w.freeBlocks).blocks
+};
+
+function listSaved() {
+  const sid = norm($('sid').value), box = $('saved');
+  box.replaceChildren();
+  if (!validId(sid)) return;
+  const cases = store.keys().filter(k => k && k.startsWith(PREFIX + sid + ':')).map(k => Number(k.split(':').pop())).filter(n => n >= 1 && n <= 5).sort();
+  if (!cases.length) return;
+  const p = add(box, 'p', 'Saved work on this computer: ');
+  p.className = 'good';
+  cases.forEach(n => { const b = add(p, 'button', 'Continue ' + CASES[n - 1].name); b.className = 'secondary'; b.onclick = () => { $('case').value = n; openCase(); }; });
+}
+$('sid').addEventListener('input', listSaved);
+listSaved();
+
+function save(quiet) {
+  if (!state) return;
+  state.updated = new Date().toISOString();
+  try {
+    store.set(key, JSON.stringify(state));
+    store.set(PREFIX + 'last', JSON.stringify({sid: state.studentId, name: state.name}));
+    if (!quiet) $('status').textContent = 'Saved on this computer at ' + new Date().toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}) + '. Download your progress file regularly as a backup.';
+  } catch {
+    $('status').textContent = 'This browser could not save your work (storage full or blocked). Download your progress file now.';
+  }
+  refreshChecklist();
+}
+
+function table(parent, headers, rows) {
+  const wrap = add(parent, 'div'); wrap.className = 'scroll';
+  const t = add(wrap, 'table'), h = add(t, 'tr');
+  headers.forEach(x => add(h, 'th', x));
+  rows.forEach(row => { const tr = add(t, 'tr'); row.forEach(x => add(tr, 'td', String(x ?? '—'))); });
+}
+
+function written(parent, label, field, hint) {
+  const id = 'f-' + field;
+  const l = add(parent, 'label', label); l.htmlFor = id;
+  if (hint) add(parent, 'p', hint).className = 'muted';
+  const t = add(parent, 'textarea'); t.id = id; t.value = state.text[field] || '';
+  const printed = add(parent, 'div', t.value); printed.className = 'printed';
+  t.oninput = () => { state.text[field] = t.value; printed.textContent = t.value; save(); };
+  return t;
+}
+
+function imageField(parent, label, kind, hint) {
+  const wrap = add(parent, 'div');
+  add(wrap, 'label', label);
+  if (hint) add(wrap, 'p', hint).className = 'muted';
+  const img = add(wrap, 'img'); img.className = 'evidence'; img.alt = label;
+  const show = () => { if (state.images[kind]) { img.src = state.images[kind]; img.hidden = false; } else img.hidden = true; };
+  show();
+  const pick = add(wrap, 'label'); pick.className = 'filebtn'; pick.textContent = 'Choose image (PNG or JPG)';
+  const input = add(pick, 'input'); input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp';
+  input.onchange = async () => {
+    const file = input.files[0]; if (!file) return;
+    try { state.images[kind] = await shrink(file); show(); save(); }
+    catch { $('status').textContent = 'This image could not be read. Save it as PNG or JPG and try again.'; }
+    input.value = '';
+  };
+}
+
+async function shrink(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+    const scale = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function experiment(sec, k, simulate) {
+  const e = EXPERIMENTS[k];
+  add(sec, 'h3', 'Your prediction: ' + e.title);
+  const p = state.predictions[k];
+  if (p) {
+    const box = add(sec, 'div'); box.className = 'locked';
+    add(box, 'p', 'Initial prediction: ' + p.value + (e.unit ? ' ' + e.unit : '') + ' (locked ' + stamp(p.lockedAt) + ')');
+    add(box, 'p', 'Simulation result: ' + Number(correct[k]().toFixed(2)) + (e.unit ? ' ' + e.unit : ''));
+    add(box, 'p', 'Working shown before the simulation:');
+    add(box, 'div', p.work).style.whiteSpace = 'pre-wrap';
+    const sim = add(sec, 'details'); sim.className = 'sim'; sim.open = true;
+    add(sim, 'summary', 'Simulation step by step');
+    simulate(sim);
+    written(sec, 'Compare your prediction with the simulation. Explain any difference and correct your reasoning.', k + 'Correction');
+  } else {
+    const l = add(sec, 'label', 'Initial numeric prediction'); l.htmlFor = 'pred-' + k;
+    const input = add(sec, 'input'); input.type = 'number'; input.step = 'any'; input.id = 'pred-' + k; input.value = state.draftPredictions[k] ?? '';
+    const lw = add(sec, 'label', 'Show how you calculated it (Gantt chart, trace or calculation)'); lw.htmlFor = 'work-' + k;
+    const work = add(sec, 'textarea'); work.id = 'work-' + k; work.value = state.draftWork[k] || '';
+    const pw = add(sec, 'div', work.value); pw.className = 'printed';
+    input.oninput = () => { state.draftPredictions[k] = input.value; save(); };
+    work.oninput = () => { state.draftWork[k] = work.value; pw.textContent = work.value; save(); };
+    add(sec, 'p', 'Locking is final: your initial prediction and working cannot be changed afterwards. You can still explain corrections below the simulation.').className = 'notice noprint';
+    const b = add(sec, 'button', 'Lock my prediction and run the simulation');
+    b.onclick = () => {
+      if (input.value === '' || !Number.isFinite(Number(input.value))) { alert('Enter a numeric prediction first.'); return; }
+      if (!work.value.trim()) { alert('Show how you calculated your prediction first.'); return; }
+      if (!confirm('Lock this prediction (' + input.value + ')? It cannot be changed afterwards.')) return;
+      state.predictions[k] = {value: Number(input.value), work: work.value, lockedAt: new Date().toISOString()};
+      delete state.draftPredictions[k]; delete state.draftWork[k];
+      save(); render(); document.getElementById('sec-' + k)?.scrollIntoView();
+    };
+  }
+}
+
+function render() {
+  const c = state.caseNo, info = CASES[c - 1];
+  $('caseTitle').textContent = info.name;
+  $('goal').textContent = 'Design goal: ' + info.goal + '.';
+  const tasks = $('tasks'); tasks.replaceChildren();
+  const section = (id, title, text) => { const s = add(tasks, 'section'); s.id = 'sec-' + id; add(s, 'h2', title); if (text) add(s, 'p', text); return s; };
+
+  const arch = section('architecture', '1. Architecture', 'Design the system. Show its main components and how data moves between them.');
+  written(arch, 'Describe your components and how data moves between them.', 'architecture');
+  imageField(arch, 'Architecture diagram', 'diagram', 'Draw boxes for components and arrows for data flow (on paper or with any drawing tool), then add a photo or screenshot.');
+
+  const proc = section('processes', '2. Processes and threads', 'Identify the processes, the threads inside them and the shared resources. Say which component owns each responsibility.');
+  table(proc, ['Process', 'Task'], w.processes.map(p => [p.id, p.task]));
+  written(proc, 'Processes, threads and shared resources', 'processes');
+
+  const cpu = section('cpu', '3. CPU scheduling', 'Trace FCFS, Round Robin and non-preemptive Priority with Gantt charts. Lower priority number means higher priority. Ties use input order. In Round Robin, new arrivals enter the ready queue before a preempted process returns. Waiting time = completion − arrival − burst.');
+  add(cpu, 'p', 'Quantum: ' + w.quantum + ' ms');
+  table(cpu, ['Process', 'Task', 'Arrival (ms)', 'Burst (ms)', 'Priority'], w.processes.map(p => [p.id, p.task, p.arrival, p.burst, p.priority]));
+  experiment(cpu, 'cpu', s => ['FCFS', 'RR', 'PRIORITY'].forEach(a => {
+    const r = scheduling(w.processes, a, w.quantum);
+    add(s, 'h4', a === 'RR' ? 'Round Robin' : a === 'PRIORITY' ? 'Priority (non-preemptive)' : 'FCFS');
+    add(s, 'p', 'Gantt: ' + r.timeline.map(x => x.start + '–' + x.end + ' ' + x.id).join(' | '));
+    table(s, ['Process', 'Completion', 'Waiting', 'Turnaround'], r.metrics.map(m => [m.id, m.completion, m.waiting, m.turnaround]));
+    add(s, 'p', 'Average waiting ' + r.averageWaiting.toFixed(2) + ' ms · average turnaround ' + r.averageTurnaround.toFixed(2) + ' ms · CPU utilization ' + r.utilization.toFixed(1) + '%');
+  }));
+
+  const sync = section('sync', '4. Synchronization and deadlock', 'Two processes update a shared counter. Without a mutex both read the counter before either writes. Predict the final counter when P2 writes last.');
+  add(sync, 'p', 'Initial counter ' + w.sync.initial + '. P1 adds ' + w.sync.increments.P1 + '. P2 adds ' + w.sync.increments.P2 + '.');
+  experiment(sync, 'sync', s => {
+    for (const [label, mutex, reverse] of [['No mutex, P2 writes last', false, false], ['No mutex, P1 writes last', false, true], ['With a mutex', true, false]]) {
+      const r = synchronization(w.sync, mutex, reverse);
+      add(s, 'h4', label);
+      table(s, ['Process', 'Action', 'Counter'], r.steps.map(x => [x.task, x.action, x.counter]));
+      add(s, 'p', 'Final counter ' + r.counter);
+    }
+  });
+  written(sync, 'Deadlock: P1 holds lock A and requests B while P2 holds B and requests A. Explain why this is a deadlock and how a lock order prevents it.', 'deadlock');
+
+  const vm = section('vm', '5. Virtual memory', 'Trace the reference string with the given number of frames. Record every hit and fault.');
+  add(vm, 'p', 'Frames: ' + w.frames + ' · Page references: ' + w.pages.join(', '));
+  experiment(vm, 'vm', s => ['FIFO', 'LRU', 'OPT', 'CLOCK'].forEach(a => {
+    const r = replacement(w.pages, w.frames, a);
+    add(s, 'h4', a);
+    table(s, ['Reference', 'Frames', 'Hit / fault', 'Evicted', ...(a === 'CLOCK' ? ['Use bits', 'Next frame'] : [])],
+      r.steps.map(x => [x.page, x.frames.map(f => f ?? '–').join(' | '), x.hit ? 'Hit' : 'Fault', x.evicted, ...(a === 'CLOCK' ? [x.bits.join(' '), x.pointer + 1] : [])]));
+    add(s, 'p', 'Faults ' + r.faults + ' · hit ratio ' + (100 * r.hitRatio).toFixed(1) + '%');
+  }));
+
+  const fs = section('fs', '6. File systems', 'Find how many blocks the file needs and its internal fragmentation. Compare contiguous, linked and indexed allocation with the free blocks below.');
+  add(fs, 'p', info.file + ': ' + w.fileKiB + ' KiB · Block size: ' + w.blockKiB + ' KiB · Free blocks: ' + w.freeBlocks.join(', '));
+  experiment(fs, 'fs', s => {
+    const r = allocation(w.fileKiB, w.blockKiB, w.freeBlocks);
+    table(s, ['Metric', 'Result'], [['Data blocks', r.blocks], ['Internal fragmentation (KiB)', r.internalWasteKiB], ['Contiguous', r.contiguous?.join(', ') ?? 'Not possible'], ['Linked', r.linked?.join(' → ') ?? 'Not possible'], ['Indexed', r.indexed ? 'Index ' + r.indexed.index + '; data ' + r.indexed.data.join(', ') : 'Not possible']]);
+    for (const locked of [false, true]) { add(s, 'h4', locked ? 'Reader and writer with shared / exclusive locks' : 'Reader and writer without locks'); const ol = add(s, 'ol'); fileLocking(locked).forEach(x => add(ol, 'li', x)); }
+  });
+  written(fs, 'File locking: what can a reader see while a writer updates the file, and how do shared and exclusive locks prevent it?', 'locking');
+
+  const ev = section('evaluation', '7. Real-world experiment and evaluation', 'On your own computer, compare normal use with an increased workload (for example many browser tabs or a video). Use Task Manager, Activity Monitor or a similar tool. Crop any personal information from your screenshots.');
+  written(ev, 'Record CPU, memory, disk and thread measurements for both conditions, explain the change and make an engineering decision for your system.', 'evaluation', 'Give values with units and say how long you observed.');
+  imageField(ev, 'Screenshot: normal use', 'baseline');
+  imageField(ev, 'Screenshot: increased workload', 'load');
+
+  const head = $('reportHead'); head.replaceChildren();
+  add(head, 'h1', 'Operating Systems — Virtual Lab Homework Report');
+  table(head, ['Name', 'Student number', 'System', 'Report created', 'Due'], [[state.name || '—', state.studentId, info.name, new Date().toLocaleString('en-GB', {dateStyle: 'medium', timeStyle: 'short'}), DUE_TEXT]]);
+  refreshChecklist();
+}
+
+function missing() {
+  const t = state.text, m = [];
+  if (!state.name?.trim()) m.push(['Name and surname', 'workspace']);
+  if (!t.architecture?.trim()) m.push(['Architecture description', 'sec-architecture']);
+  if (!state.images.diagram) m.push(['Architecture diagram image', 'sec-architecture']);
+  if (!t.processes?.trim()) m.push(['Processes, threads and shared resources', 'sec-processes']);
+  for (const [k, name] of [['cpu', 'CPU scheduling'], ['sync', 'Synchronization'], ['vm', 'Virtual memory'], ['fs', 'File systems']]) {
+    if (!state.predictions[k]) m.push([name + ': lock your prediction', 'sec-' + k]);
+    else if (!t[k + 'Correction']?.trim()) m.push([name + ': compare with the simulation', 'sec-' + k]);
+  }
+  if (!t.deadlock?.trim()) m.push(['Deadlock explanation', 'sec-sync']);
+  if (!t.locking?.trim()) m.push(['File locking explanation', 'sec-fs']);
+  if (!t.evaluation?.trim()) m.push(['Measurements and evaluation', 'sec-evaluation']);
+  if (!state.images.baseline) m.push(['Screenshot: normal use', 'sec-evaluation']);
+  if (!state.images.load) m.push(['Screenshot: increased workload', 'sec-evaluation']);
+  return m;
+}
+
+function refreshChecklist() {
+  if (!state) return;
+  const list = $('checklist'); list.replaceChildren();
+  const m = missing();
+  if (!m.length) add(list, 'li', 'Everything is complete. Save the report as PDF and upload it to UBIS.').className = 'ok';
+  for (const [label, target] of m) { const li = add(list, 'li'); li.className = 'todo'; const a = add(li, 'a', label); a.href = '#' + target; }
+  if (new Date() > DUE) add(list, 'li', 'The deadline (' + DUE_TEXT + ') has passed. Ask your instructor before uploading.').className = 'todo';
+}
+
+function openCase(imported) {
+  const sid = norm($('sid').value), c = Number($('case').value);
+  if (!validId(sid)) { $('startMsg').textContent = 'Enter your student number exactly as in UBIS, for example B2405.010133.'; return; }
+  $('startMsg').textContent = '';
+  key = PREFIX + sid + ':' + c;
+  w = workload(sid, c);
+  let saved = imported || null;
+  if (!saved) { try { saved = JSON.parse(store.get(key) || 'null'); } catch { saved = null; } }
+  state = saved || {format: FORMAT, version: 1, studentId: sid, caseNo: c, created: new Date().toISOString(), text: {}, predictions: {}, draftPredictions: {}, draftWork: {}, images: {}};
+  state.name = $('sname').value.trim() || state.name || '';
+  $('sname').value = state.name; $('wsName').value = state.name;
+  for (const f of ['text', 'predictions', 'draftPredictions', 'draftWork', 'images']) state[f] = state[f] || {};
+  $('startSec').hidden = true; $('workspace').hidden = false;
+  render(); save(true);
+  $('status').textContent = saved ? 'Welcome back. Your saved work was restored.' : 'Started. Your work is saved automatically on this computer.';
+  window.scrollTo(0, 0);
+}
+
+$('open').onclick = () => openCase();
+$('wsName').addEventListener('input', () => { if (state) { state.name = $('wsName').value; $('sname').value = state.name; save(); } });
+$('switch').onclick = () => { $('workspace').hidden = true; $('startSec').hidden = false; state = null; listSaved(); };
+$('download').onclick = () => {
+  const blob = new Blob([JSON.stringify(state)], {type: 'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'OS-homework-' + state.studentId + '-system' + state.caseNo + '.json';
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  $('status').textContent = 'Progress file downloaded. Keep it safe; use Load progress file to continue on another computer.';
+};
+$('importFile').onchange = async () => {
+  const file = $('importFile').files[0]; $('importFile').value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.format !== FORMAT || !validId(data.studentId) || !(data.caseNo >= 1 && data.caseNo <= 5)) throw Error();
+    const existing = store.get(PREFIX + data.studentId + ':' + data.caseNo);
+    if (existing) {
+      const current = JSON.parse(existing);
+      if (current.updated > data.updated && !confirm('This computer has newer work for this system (saved ' + stamp(current.updated) + ') than the file (saved ' + stamp(data.updated) + '). Replace it with the file?')) return;
+    }
+    $('sid').value = data.studentId; $('case').value = data.caseNo; if (data.name) $('sname').value = data.name;
+    openCase(data);
+  } catch { $('startMsg').textContent = 'This is not a valid progress file for this homework.'; }
+};
+$('print').onclick = () => {
+  const m = missing();
+  if (m.length && !confirm(m.length + ' item(s) are still missing:\n• ' + m.map(x => x[0]).join('\n• ') + '\n\nSave the PDF anyway?')) return;
+  render(); window.print();
+};
+window.addEventListener('beforeunload', () => { if (state) save(true); });
+</script>
+</body></html>
